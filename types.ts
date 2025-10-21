@@ -18,3 +18,14 @@ export interface Lead {
   owner?: string;
   meeting_at?: string;
 }
+
+export interface Raffle {
+  id: string;
+  org_id: string;
+  event_code: string;
+  day: number;
+  prize: string;
+  winner_lead_id: string;
+  drawn_at: string;
+  status: 'Planned' | 'Drawn' | 'Delivered';
+}

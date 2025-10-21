@@ -163,7 +163,8 @@ const Meetings: React.FC = () => {
       return;
     }
 
-    const existingMeeting = Array.from(meetings.values()).find(m => m.id === lead.id);
+    // Fix: Add explicit type for 'm' to resolve type inference issue.
+    const existingMeeting = Array.from(meetings.values()).find((m: MeetingLead) => m.id === lead.id);
     if (existingMeeting && existingMeeting.meeting_at) {
        alert(`${lead.name} already has a meeting at ${new Date(existingMeeting.meeting_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
        return;
@@ -201,7 +202,8 @@ const Meetings: React.FC = () => {
       window.print();
   };
   
-  const sortedMeetings = Array.from(meetings.values()).sort((a, b) => {
+  // Fix: Add explicit types for 'a' and 'b' to resolve type inference issue.
+  const sortedMeetings = Array.from(meetings.values()).sort((a: MeetingLead, b: MeetingLead) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
       return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime()
   });
@@ -280,7 +282,8 @@ const Meetings: React.FC = () => {
                 <h2 className="text-2xl font-bold text-white mb-1">Today's Agenda</h2>
                 <p className="text-sm text-slate-400 mb-4">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                 <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                    {sortedMeetings.length > 0 ? sortedMeetings.map(lead => (
+                    {/* Fix: Add explicit type for 'lead' to resolve type inference issue. */}
+                    {sortedMeetings.length > 0 ? sortedMeetings.map((lead: MeetingLead) => (
                     <div key={lead.id} className="bg-slate-700/50 p-3 rounded-lg">
                         <p className="font-mono text-sm text-primary-400">{lead.meeting_at ? new Date(lead.meeting_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'No Time'}</p>
                         <p className="font-semibold text-white mt-1">{lead.name}</p>
