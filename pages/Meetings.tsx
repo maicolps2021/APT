@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { EVENT_CODE } from '../lib/config';
+import { EVENT_CODE, ORG_UUID } from '../lib/config';
+import { getDayRange } from '../lib/utils';
 import type { Lead } from '../types';
 import Card from '../components/Card';
 
@@ -106,28 +107,27 @@ const Meetings: React.FC = () => {
       if (leadError) throw leadError;
       setLeads(leadData || []);
 
-      // Fetch today's meetings
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      // Fetch today's meetings using UTC date range
+      const { startISO, endISO } = getDayRange(new Date());
 
       const { data: meetingData, error: meetingError } = await supabase
         .from('leads')
-        .select('*')
+        .select('id,name,company,whatsapp,email,meeting_at,owner')
         .eq('event_code', EVENT_CODE)
-        .eq('next_step', 'Reunion')
-        .gte('meeting_at', today.toISOString())
-        .lt('meeting_at', tomorrow.toISOString());
+        .eq('org_id', ORG_UUID)
+        .gte('meeting_at', startISO)
+        .lt('meeting_at', endISO)
+        .order('meeting_at', { ascending: true });
 
       if (meetingError) throw meetingError;
       
       const meetingsMap = new Map<string, Lead>();
       if (meetingData) {
-        for (const lead of meetingData) {
-          // Fix: Cast the lead object to the `Lead` type to handle `unknown` type from Supabase.
+        // Fix: Cast meetingData to any[] to allow iteration, as Supabase may return 'unknown'.
+        for (const lead of (meetingData as any[])) {
           const typedLead = lead as Lead;
           if (typedLead.meeting_at) {
+            // Display time is converted from UTC to local for the user
             const time = new Date(typedLead.meeting_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
             meetingsMap.set(time, typedLead);
           }
@@ -164,18 +164,22 @@ const Meetings: React.FC = () => {
        return;
     }
 
+    // Create a UTC timestamp for the meeting slot on the current date
     const meetingDate = new Date();
     const [hours, minutes] = time.split(':');
-    meetingDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    meetingDate.setUTCHours(parseInt(hours), parseInt(minutes), 0, 0);
+    const slotISO = meetingDate.toISOString();
 
     const { data, error } = await supabase
       .from('leads')
       .update({
         owner: owner,
         next_step: 'Reunion',
-        meeting_at: meetingDate.toISOString(),
+        meeting_at: slotISO,
       })
       .eq('id', lead.id)
+      .eq('event_code', EVENT_CODE)
+      .eq('org_id', ORG_UUID)
       .select()
       .single();
 
@@ -183,8 +187,8 @@ const Meetings: React.FC = () => {
       console.error('Error assigning meeting:', error);
       alert('Failed to schedule meeting.');
     } else if (data) {
-      // Fix: Cast the returned data to `Lead` before updating the state to ensure type consistency.
-      setMeetings(prev => new Map(prev).set(time, data as Lead));
+      // Fix: Use a double cast through 'unknown' to safely convert the Supabase response to the Lead type.
+      setMeetings(prev => new Map(prev).set(time, data as unknown as Lead));
     }
   };
   
