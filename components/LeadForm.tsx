@@ -59,8 +59,8 @@ export function LeadForm() {
       whatsapp: String(f.get("whatsapp") || ""),
       email: String(f.get("email") || ""),
       interest: (f.get("interest") || undefined) as Lead['interest'],
-      next_step: 'Condiciones',
-      scoring: "B",
+      next_step: 'Condiciones' as const,
+      scoring: "B" as const,
       tags: tags,
       notes: notes ? notes : formNotes,
     };
