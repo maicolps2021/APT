@@ -7,6 +7,7 @@ import TV from './pages/TV';
 import KPIs from './pages/KPIs';
 import Meetings from './pages/Meetings';
 import Raffles from './pages/Raffles';
+import Materials from './pages/Materials';
 import Header from './components/Header';
 
 const App: React.FC = () => {
@@ -37,6 +38,8 @@ const App: React.FC = () => {
         return <Raffles />;
       case '#/tv':
         return <TV />;
+      case '#/materials':
+        return <Materials />;
       case '#/':
       case '':
       default:

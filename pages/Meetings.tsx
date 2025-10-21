@@ -203,7 +203,8 @@ const Meetings: React.FC = () => {
       window.print();
   };
   
-  // Fix: Add explicit types for 'a' and 'b' to resolve type inference issue.
+  // FIX: Add explicit types for 'a' and 'b' parameters in the sort callback. This resolves an issue where
+  // they were being inferred as 'unknown', causing errors when accessing the 'meeting_at' property.
   const sortedMeetings = Array.from(meetings.values()).sort((a: MeetingLead, b: MeetingLead) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
       return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime()

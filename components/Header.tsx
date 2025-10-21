@@ -15,6 +15,7 @@ const Header: React.FC = () => {
           <a href="#/meetings" className="text-slate-300 hover:text-primary-400 transition-colors">Meetings</a>
           <a href="#/kpis" className="text-slate-300 hover:text-primary-400 transition-colors">KPIs</a>
           <a href="#/raffles" className="text-slate-300 hover:text-primary-400 transition-colors">Raffles</a>
+          <a href="#/materials" className="text-slate-300 hover:text-primary-400 transition-colors">Materials</a>
           <a href="#/tv" className="text-slate-300 hover:text-primary-400 transition-colors">TV Display</a>
         </div>
       </nav>
