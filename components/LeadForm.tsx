@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { EVENT_CODE, ORG_UUID } from "../lib/config";
@@ -39,9 +38,11 @@ export function LeadForm() {
   const buildPayloadFromForm = (notes?: string) => {
     if (!formRef.current) return null;
     const f = new FormData(formRef.current);
-    const slot = new Date().getHours() < 13 ? "AM" : "PM";
+    const slot: 'AM' | 'PM' = new Date().getHours() < 13 ? "AM" : "PM";
     const formNotes = f.get("notes") as string || '';
 
+    // FIX: Cast FormDataEntryValue to string or specific types to match the 'Lead' interface.
+    // FormData.get() can return string, File, or null, which is not directly assignable.
     return {
       org_id: ORG_UUID,
       event_code: EVENT_CODE,
@@ -51,13 +52,13 @@ export function LeadForm() {
       source: "QR" as const,
       day: mapDay(),
       slot,
-      name: f.get("name"),
-      company: f.get("company"),
-      role: f.get("role"),
-      channel: f.get("role"),
-      whatsapp: f.get("whatsapp"),
-      email: f.get("email"),
-      interest: f.get("interest"),
+      name: String(f.get("name") || ""),
+      company: String(f.get("company") || ""),
+      role: (f.get("role") || undefined) as Lead['role'],
+      channel: String(f.get("role") || ""),
+      whatsapp: String(f.get("whatsapp") || ""),
+      email: String(f.get("email") || ""),
+      interest: (f.get("interest") || undefined) as Lead['interest'],
       next_step: 'Condiciones',
       scoring: "B",
       tags: tags,
