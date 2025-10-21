@@ -1,121 +1,170 @@
-import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
-import { EVENT_CODE, ORG_UUID } from "../lib/config";
 
-type LeadRow = {
-  id: string;
-  name: string | null;
-  company: string | null;
-  whatsapp: string | null;
-  email: string | null;
-  created_at: string;
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { EVENT_CODE, ORG_UUID } from '../lib/config';
+import { mentions, Mention } from '../lib/content';
+import type { MentionLog } from '../types';
+import Card from '../components/Card';
+
+// Helper to get current day based on event dates
+const getCurrentEventDay = () => {
+  const today = new Date().getUTCDate();
+  const eventDays = Object.keys(mentions).map(Number);
+  // Return the first event day that matches today, or the first day of the event as a default
+  return eventDays.find(d => d === today) || eventDays[0];
 };
 
-export default function MCDashboard() {
-  const [leads, setLeads] = useState<LeadRow[]>([]);
-  const [loading, setLoading] = useState(true);
+// CueCard Component
+interface CueCardProps {
+  mention: Mention;
+  isTold: boolean;
+  onMarkAsTold: () => Promise<void>;
+}
 
-  // 1) Carga inicial
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("leads")
-        .select("id,name,company,whatsapp,email,created_at")
-        .eq("event_code", EVENT_CODE)
-        .eq("org_id", ORG_UUID)
-        .order("created_at", { ascending: false })
-        .limit(200);
-      if (!mounted) return;
-      if (error) {
-        console.error("[MC] select error:", error.message);
-        setLeads([]);
-      } else {
-        setLeads(data ?? []);
-      }
-      setLoading(false);
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+const CueCard: React.FC<CueCardProps> = ({ mention, isTold, onMarkAsTold }) => {
+  const [loading, setLoading] = useState(false);
 
-  // 2) Realtime en INSERT (y opcional UPDATE/DELETE)
-  useEffect(() => {
-    const channel = supabase
-      .channel("realtime-leads")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "leads",
-          filter: `event_code=eq.${EVENT_CODE}`, // server-side filter
-        },
-        (payload) => {
-          const row = payload.new as LeadRow & { org_id?: string };
-          // The org_id is not selected in the main query, but it's present in the payload
-          if (row && (row as any).org_id === ORG_UUID) {
-            setLeads((prev) => [row, ...prev]);
-          }
-        }
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          console.log("[MC] realtime suscrito");
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  const handleClick = async () => {
+    setLoading(true);
+    await onMarkAsTold();
+    setLoading(false);
+  };
 
   return (
-    <div className="mx-auto max-w-6xl">
-       <div className="text-center mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold text-white">MC Dashboard</h1>
-        <p className="text-slate-400 mt-2">Real-time view of all captured leads.</p>
-        <h2 className="mt-2 text-2xl font-bold text-primary-400">{leads.length} Leads Captured</h2>
-      </div>
+    <Card className={`transition-all duration-300 ${isTold ? 'bg-slate-800/50 opacity-60' : 'bg-slate-800'}`}>
+      <p className="text-slate-300 mb-4 min-h-[60px]">{mention.text}</p>
+      <button
+        onClick={handleClick}
+        disabled={isTold || loading}
+        className="w-full rounded-lg bg-primary-600 py-2 font-semibold text-white hover:bg-primary-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all"
+      >
+        {isTold ? 'Contada ✔' : (loading ? 'Guardando...' : 'Marcar como Contada')}
+      </button>
+    </Card>
+  );
+};
 
-      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-700 bg-slate-800/50">
-        <table className="min-w-full text-slate-200">
-          <thead className="bg-slate-900/50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">NAME</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">COMPANY</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">CONTACT</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">TIME</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700">
-            {loading && (
-              <tr>
-                <td className="px-4 py-4 text-center text-slate-400" colSpan={4}>Loading...</td>
-              </tr>
-            )}
-            {!loading && leads.length === 0 && (
-              <tr>
-                <td className="px-4 py-6 text-center text-slate-400" colSpan={4}>No leads captured yet.</td>
-              </tr>
-            )}
-            {leads.map((l) => {
-              const contact = l.whatsapp || l.email || "—";
-              const time = new Date(l.created_at).toLocaleTimeString();
-              return (
-                <tr key={l.id} className="hover:bg-slate-700/50 transition-colors">
-                  <td className="px-4 py-3 whitespace-nowrap">{l.name ?? "—"}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{l.company ?? "—"}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{contact}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-slate-400">{time}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+// Main MC Page Component
+const MC: React.FC = () => {
+  const [selectedDay, setSelectedDay] = useState<number>(getCurrentEventDay());
+  const [toldMentions, setToldMentions] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchToldMentions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error } = await supabase
+        .from('mentions_log')
+        .select('mention_id')
+        .eq('event_code', EVENT_CODE)
+        .eq('org_id', ORG_UUID)
+        .eq('day', selectedDay);
+
+      if (error) throw error;
+      
+      const toldIds = new Set(data.map((log: any) => log.mention_id));
+      setToldMentions(toldIds);
+    } catch (err: any) {
+        console.error('Error fetching mention logs:', err);
+        setError('Failed to load mention history. Please ensure the `mentions_log` table exists.');
+    } finally {
+        setLoading(false);
+    }
+  }, [selectedDay]);
+
+  useEffect(() => {
+    fetchToldMentions();
+  }, [fetchToldMentions]);
+
+  const handleMarkAsTold = async (mention: Mention, slot: 'AM' | 'PM') => {
+    if (toldMentions.has(mention.id)) return;
+
+    const payload: Omit<MentionLog, 'id' | 'created_at'> = {
+      org_id: ORG_UUID,
+      event_code: EVENT_CODE,
+      day: selectedDay,
+      slot,
+      mention_id: mention.id,
+      type: mention.type,
+    };
+
+    const { error } = await supabase.from('mentions_log').insert([payload]);
+
+    if (error) {
+      console.error('Error saving mention log:', error);
+      alert('Could not save mention. Please check the console.');
+    } else {
+      setToldMentions(prev => new Set(prev).add(mention.id));
+    }
+  };
+
+  const dayMentions = useMemo(() => mentions[selectedDay], [selectedDay]);
+  const allMentionsForDay = useMemo(() => {
+      if (!dayMentions) return [];
+      return [...dayMentions.AM, ...dayMentions.PM, ...dayMentions.MICRO];
+  }, [dayMentions]);
+  
+  const toldCount = toldMentions.size;
+  const totalCount = allMentionsForDay.length;
+
+  const renderSection = (title: string, sectionMentions: Mention[], slot: 'AM' | 'PM') => (
+    <div>
+      <h2 className="text-2xl font-bold text-primary-400 mb-4 border-b-2 border-primary-500/50 pb-2">{title}</h2>
+      {sectionMentions.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {sectionMentions.map(m => (
+            <CueCard
+              key={m.id}
+              mention={m}
+              isTold={toldMentions.has(m.id)}
+              onMarkAsTold={() => handleMarkAsTold(m, slot)}
+            />
+          ))}
+        </div>
+      ) : <p className="text-slate-400">No mentions for this period.</p>}
     </div>
   );
-}
+
+  return (
+    <div className="mx-auto max-w-7xl">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-8">
+        <div className="text-center md:text-left">
+          <h1 className="text-3xl md:text-4xl font-bold text-white">MC Cue Cards</h1>
+          <p className="text-slate-400 mt-2">Guión y registro de menciones en vivo.</p>
+        </div>
+        <div className="flex items-center gap-4 mt-4 md:mt-0">
+          <select
+            value={selectedDay}
+            onChange={(e) => setSelectedDay(Number(e.target.value))}
+            className="input bg-slate-800"
+          >
+            {Object.keys(mentions).map(day => (
+              <option key={day} value={day}>Día {day}</option>
+            ))}
+          </select>
+          <div className="bg-slate-800 rounded-lg px-4 py-2 text-center">
+              <p className="text-2xl font-bold text-white">{toldCount} / {totalCount}</p>
+              <p className="text-xs text-slate-400 uppercase">Menciones Contadas</p>
+          </div>
+        </div>
+      </div>
+      
+      {loading ? (
+        <div className="text-center p-8">Loading mentions...</div>
+      ) : error ? (
+        <div className="text-center p-4 bg-red-900/50 border border-red-700 rounded-lg text-red-300">{error}</div>
+      ) : (
+        <div className="space-y-12">
+          {renderSection('Menciones AM', dayMentions.AM, 'AM')}
+          {renderSection('Menciones PM', dayMentions.PM, 'PM')}
+          {/* For logging purposes, micro-mentions can be associated with either slot. 'AM' is used as a default. */}
+          {renderSection('Micro-Menciones (cualquier momento)', dayMentions.MICRO, 'AM')} 
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default MC;

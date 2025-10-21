@@ -1,3 +1,4 @@
+
 export interface Lead {
   id: string;
   created_at: string;
@@ -28,4 +29,15 @@ export interface Raffle {
   winner_lead_id: string;
   drawn_at: string;
   status: 'Planned' | 'Drawn' | 'Delivered';
+}
+
+export interface MentionLog {
+  id?: string;
+  created_at?: string;
+  org_id: string;
+  event_code: string;
+  day: number;
+  slot: 'AM' | 'PM';
+  mention_id: string; // The unique ID from content.ts
+  type: 'mention' | 'micro';
 }

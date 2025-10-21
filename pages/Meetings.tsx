@@ -193,8 +193,9 @@ const Meetings: React.FC = () => {
       console.error('Error assigning meeting:', error);
       alert('Failed to schedule meeting.');
     } else if (data) {
-      // FIX: Ensure the updated meeting data is cast to MeetingLead before updating state.
-      setMeetings(prev => new Map(prev).set(time, data as unknown as MeetingLead));
+      // FIX: By casting the response data directly to MeetingLead, we ensure the value
+      // added to the map is correctly typed, preventing downstream type inference errors.
+      setMeetings(prev => new Map(prev).set(time, data as MeetingLead));
     }
   };
   
