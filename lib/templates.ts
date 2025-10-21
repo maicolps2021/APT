@@ -8,7 +8,7 @@ import type { Lead } from '../types';
  */
 export const generateWhatsAppLink = (lead: Lead): string => {
     const name = lead.name.split(' ')[0]; // Use first name for a personal touch
-    const message = encodeURIComponent(`¡Hola ${name}! Gracias por visitarnos en el stand de Arenal Conagui. En breve te enviaremos la información de colaborador a tu correo. ¡Saludos!`);
+    const message = encodeURIComponent(`¡Hola ${name}! Gracias por visitarnos en el stand de Arenal Private Tours. En breve te enviaremos la información de colaborador a tu correo. ¡Saludos!`);
     const phone = (lead.whatsapp || '').replace(/\D/g, "");
     if (!phone) return '#';
     return `https://wa.me/${phone}?text=${message}`;
@@ -22,17 +22,17 @@ export const generateWhatsAppLink = (lead: Lead): string => {
 export const generateEmailLink = (lead: Lead): string => {
     if (!lead.email) return '#';
     const name = lead.name.split(' ')[0];
-    const subject = encodeURIComponent(`Propuesta Colaborador Arenal Conagui para ${lead.company || lead.name}`);
+    const subject = encodeURIComponent(`Propuesta Colaborador Arenal Private Tours para ${lead.company || lead.name}`);
     const body = encodeURIComponent(`Estimado/a ${name},
 
 Un placer saludarte.
 
 Adjunto a este correo encontrarás nuestras condiciones y tarifas para colaboradores. Estamos a tu disposición para cualquier consulta.
 
-¡Gracias por tu interés en Arenal Conagui!
+¡Gracias por tu interés en Arenal Private Tours!
 
 Saludos cordiales,
-El equipo de Arenal Conagui
+El equipo de Arenal Private Tours
 `);
     return `mailto:${lead.email}?subject=${subject}&body=${body}`;
 };

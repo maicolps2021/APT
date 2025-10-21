@@ -37,7 +37,7 @@ export const generateKpiAnalysis = async (query: string, kpis: KPIsData): Promis
   }
 
   const prompt = `
-You are an expert event analyst for "Arenal Conagui".
+You are an expert event analyst for "Arenal Private Tours".
 You have been provided with the following Key Performance Indicator (KPI) data for the event.
 
 **KPI Data:**

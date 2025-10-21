@@ -152,10 +152,10 @@ const TitleSection = ({ open }: { open: boolean }) => {
               <div className="flex items-center gap-2">
                 <div>
                   <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    Arenal Conagui
+                    Arenal Private Tours
                   </span>
                   <span className="block text-xs text-gray-500 dark:text-gray-400">
-                    CONAGUI2025
+                    La Fortuna
                   </span>
                 </div>
               </div>

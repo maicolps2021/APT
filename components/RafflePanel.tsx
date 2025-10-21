@@ -74,7 +74,7 @@ const RafflePanel: React.FC<RafflePanelProps> = ({ onRaffleDrawn }) => {
 
   const handleCopyToClipboard = () => {
     if (!winner) return;
-    const message = `¡Felicidades ${winner.name}! 🥳 Has ganado "${prize}" en el sorteo de Arenal Conagui. ¡Por favor acércate a nuestro stand para reclamarlo! Gracias por participar.`;
+    const message = `¡Felicidades ${winner.name}! 🥳 Has ganado "${prize}" en el sorteo de Arenal Private Tours. ¡Por favor acércate a nuestro stand para reclamarlo! Gracias por participar.`;
     navigator.clipboard.writeText(message);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -105,7 +105,7 @@ const RafflePanel: React.FC<RafflePanelProps> = ({ onRaffleDrawn }) => {
                 <textarea 
                     readOnly 
                     className="w-full bg-gray-200 dark:bg-gray-900 rounded-md p-2 text-sm text-gray-700 dark:text-gray-300 h-24 border border-gray-300 dark:border-gray-600"
-                    value={`¡Felicidades ${winner.name}! 🥳 Has ganado "${prize}" en el sorteo de Arenal Conagui. ¡Por favor acércate a nuestro stand para reclamarlo! Gracias por participar.`}
+                    value={`¡Felicidades ${winner.name}! 🥳 Has ganado "${prize}" en el sorteo de Arenal Private Tours. ¡Por favor acércate a nuestro stand para reclamarlo! Gracias por participar.`}
                 />
                  <button onClick={handleCopyToClipboard} className="w-full mt-2 rounded-lg bg-gray-600 py-2 text-sm font-semibold text-white hover:bg-gray-500 transition-all">
                     {copied ? 'Copied!' : 'Copy WhatsApp Message'}
