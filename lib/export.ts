@@ -42,7 +42,7 @@ export function exportLeadsCsv(data: Lead[]): void {
   link.setAttribute("href", url);
   
   const today = new Date().toISOString().slice(0, 10);
-  link.setAttribute("download", `leads_conagui_${today}.csv`);
+  link.setAttribute("download", `leads_arenal_private_tours_${today}.csv`);
   
   document.body.appendChild(link);
   link.click();

@@ -8,6 +8,9 @@ const Home: React.FC = () => {
         <h1 className="text-5xl md:text-7xl font-extrabold text-gray-900 dark:text-white mb-4">
           Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-blue-600">Arenal Private Tours</span>
         </h1>
+        <p className="text-md md:text-lg text-gray-500 dark:text-gray-400 -mt-2 mb-4">
+          Operated by Small Groups La Fortuna Private Tours
+        </p>
         <p className="text-lg md:text-xl text-gray-600 dark:text-gray-300">
           The central hub for event management. Capture leads, view real-time data, and engage attendees like never before.
         </p>

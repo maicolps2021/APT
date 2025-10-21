@@ -1,4 +1,5 @@
 
+
 export interface Mention {
   id: string;
   type: 'mention' | 'micro';
@@ -15,15 +16,15 @@ export interface DayMentions {
 export const mentions: Record<number, DayMentions> = {
   27: {
     AM: [
-      { id: 'd27-am-1', type: 'mention', text: '¡Buenos días a todos! Bienvenidos al primer día de Arenal Conagui. Recuerden visitar el stand de Arenal para conocer nuestras nuevas tarifas de colaborador.' },
+      { id: 'd27-am-1', type: 'mention', text: '¡Buenos días a todos! Bienvenidos al primer día de Arenal Conagui. Recuerden visitar el stand de Arenal Private Tours para conocer nuestras nuevas tarifas de colaborador.' },
       { id: 'd27-am-2', type: 'mention', text: 'No se pierdan la charla sobre "Turismo Sostenible en La Fortuna" a las 10:30 AM en el salón principal.' },
     ],
     PM: [
-      { id: 'd27-pm-1', type: 'mention', text: 'Esperamos que estén disfrutando del almuerzo. A las 2 PM tendremos una demostración de nuestros nuevos sistemas de reserva en el stand de Arenal.' },
+      { id: 'd27-pm-1', type: 'mention', text: 'Esperamos que estén disfrutando del almuerzo. A las 2 PM tendremos una demostración de nuestros nuevos sistemas de reserva en el stand de Arenal Private Tours.' },
       { id: 'd27-pm-2', type: 'mention', text: '¡El primer sorteo del día será a las 4 PM! Asegúrense de haber registrado sus datos para participar.' },
     ],
     MICRO: [
-      { id: 'd27-micro-1', type: 'micro', text: 'Arenal: tu socio estratégico en La Fortuna.' },
+      { id: 'd27-micro-1', type: 'micro', text: 'Arenal Private Tours: tu socio estratégico en La Fortuna.' },
       { id: 'd27-micro-2', type: 'micro', text: '¿Ya conoces nuestros paquetes de aventura? ¡Pregúntanos!' },
       { id: 'd27-micro-3', type: 'micro', text: 'Síguenos en redes sociales como @ArenalTours.' },
     ],
@@ -34,11 +35,11 @@ export const mentions: Record<number, DayMentions> = {
       { id: 'd28-am-2', type: 'mention', text: 'A las 11 AM, tendremos un panel con expertos sobre el futuro de los traslados turísticos en Costa Rica.' },
     ],
     PM: [
-      { id: 'd28-pm-1', type: 'mention', text: '¡No olviden el coffee break a las 3 PM! Una cortesía de Arenal para recargar energías.' },
+      { id: 'd28-pm-1', type: 'mention', text: '¡No olviden el coffee break a las 3 PM! Una cortesía de Arenal Private Tours para recargar energías.' },
       { id: 'd28-pm-2', type: 'mention', text: 'El gran sorteo de un fin de semana en La Fortuna será a las 5 PM. ¡Mucha suerte a todos!' },
     ],
     MICRO: [
-      { id: 'd28-micro-1', type: 'micro', text: 'Traslados seguros y puntuales con Arenal.' },
+      { id: 'd28-micro-1', type: 'micro', text: 'Traslados seguros y puntuales con Arenal Private Tours.' },
       { id: 'd28-micro-2', type: 'micro', text: 'Descubre la magia del volcán con nuestros tours.' },
     ],
   },
@@ -51,7 +52,7 @@ export const mentions: Record<number, DayMentions> = {
         { id: 'd29-pm-1', type: 'mention', text: 'Gracias a todos por acompañarnos. Ha sido un evento increíble. ¡Nos vemos en la próxima edición!' },
     ],
     MICRO: [
-        { id: 'd29-micro-1', type: 'micro', text: 'Arenal les desea un excelente viaje de regreso.' },
+        { id: 'd29-micro-1', type: 'micro', text: 'Arenal Private Tours les desea un excelente viaje de regreso.' },
         { id: 'd29-micro-2', type: 'micro', text: '¡Hasta la próxima aventura juntos!' },
     ],
   },

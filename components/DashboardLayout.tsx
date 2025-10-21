@@ -155,7 +155,7 @@ const TitleSection = ({ open }: { open: boolean }) => {
                     Arenal Private Tours
                   </span>
                   <span className="block text-xs text-gray-500 dark:text-gray-400">
-                    La Fortuna
+                    by Small Groups
                   </span>
                 </div>
               </div>
