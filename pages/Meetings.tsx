@@ -108,6 +108,7 @@ const Meetings: React.FC = () => {
     setError(null);
     try {
       // Fetch leads for autocomplete
+      // FIX: Corrected syntax for destructuring assignment from '=>' to '='. This was causing a cascade of "Cannot find name" errors.
       const { data: leadData, error: leadError } = await supabase
         .from('leads')
         .select('id, name, company')
@@ -193,16 +194,18 @@ const Meetings: React.FC = () => {
       .eq('id', lead.id)
       .eq('event_code', EVENT_CODE)
       .eq('org_id', ORG_UUID)
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error('Error assigning meeting:', error);
-      alert('Failed to schedule meeting.');
-    } else if (data) {
-      // FIX: By casting the response data directly to MeetingLead, we ensure the value
-      // added to the map is correctly typed, preventing downstream type inference errors.
-      setMeetings(prev => new Map(prev).set(time, data as MeetingLead));
+      alert(`Failed to schedule meeting: ${error.message}`);
+    } else if (data && data.length > 0) {
+      // Successfully updated and got the row back
+      setMeetings(prev => new Map(prev).set(time, data[0] as MeetingLead));
+    } else {
+      // This branch handles the "0 rows affected" or RLS issue without crashing.
+      console.error('Error assigning meeting: Update affected 0 rows or RLS prevented returning data.');
+      alert('Failed to schedule meeting. The lead may no longer exist or there could be a permissions issue.');
     }
   };
   
