@@ -12,6 +12,8 @@ declare global {
       readonly VITE_EVENT_DATES?: string;
       readonly VITE_WHATSAPP?: string;
       readonly VITE_GEMINI_API_KEY?: string;
+      readonly VITE_TV_BUCKET?: string;
+      readonly VITE_TV_PREFIX?: string;
     };
   }
 }

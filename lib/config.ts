@@ -6,3 +6,5 @@ export const ORG_UUID = import.meta.env.VITE_ORG_UUID;
 export const EVENT_CODE = import.meta.env.VITE_EVENT_CODE;
 export const EVENT_DATES = import.meta.env.VITE_EVENT_DATES ?? '2025-10-27,2025-10-28,2025-10-29';
 export const WHATSAPP = import.meta.env.VITE_WHATSAPP ?? '+50663520923';
+export const TV_BUCKET = import.meta.env.VITE_TV_BUCKET ?? 'tv';
+export const TV_PREFIX = import.meta.env.VITE_TV_PREFIX ?? 'conagui2025';
