@@ -63,21 +63,27 @@ const LeadAutocomplete: React.FC<{
         onChange={e => setSearchTerm(e.target.value)}
         onFocus={() => { if (searchTerm.length > 1) setIsOpen(true); }}
         onBlur={() => setTimeout(() => setIsOpen(false), 200)} // delay to allow click
-        placeholder="Asignar a..."
+        placeholder="Buscar lead por nombre..."
         className="w-full bg-slate-700 text-sm px-2 py-1 rounded-md focus:ring-2 focus:ring-primary-500 focus:outline-none"
       />
-      {isOpen && filteredLeads.length > 0 && (
+      {isOpen && (
         <ul className="absolute z-10 w-full bg-slate-900 border border-slate-600 rounded-md mt-1 max-h-48 overflow-y-auto shadow-lg">
-          {filteredLeads.map(lead => (
-            <li
-              key={lead.id}
-              onMouseDown={() => handleSelect(lead)}
-              className="px-3 py-2 text-sm hover:bg-slate-700 cursor-pointer"
-            >
-              <p className="font-semibold">{lead.name}</p>
-              <p className="text-xs text-slate-400">{lead.company}</p>
+          {filteredLeads.length > 0 ? (
+            filteredLeads.map(lead => (
+              <li
+                key={lead.id}
+                onMouseDown={() => handleSelect(lead)}
+                className="px-3 py-2 text-sm hover:bg-slate-700 cursor-pointer"
+              >
+                <p className="font-semibold">{lead.name}</p>
+                <p className="text-xs text-slate-400">{lead.company}</p>
+              </li>
+            ))
+          ) : (
+             <li className="px-3 py-2 text-sm text-slate-400 italic">
+              {leads.length === 0 ? "No leads capturados." : "No se encontraron leads."}
             </li>
-          ))}
+          )}
         </ul>
       )}
     </div>
@@ -206,6 +212,7 @@ const Meetings: React.FC = () => {
   // FIX: Add explicit types for 'a' and 'b' parameters in the sort callback. This resolves an issue where
   // they were being inferred as 'unknown', causing errors when accessing the 'meeting_at' property.
   // Fix: Add explicit types to sort callback parameters to resolve 'unknown' type error.
+  // Fix: Explicitly type `a` and `b` as `MeetingLead` to resolve TypeScript error.
   const sortedMeetings = Array.from(meetings.values()).sort((a: MeetingLead, b: MeetingLead) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
       return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime()
@@ -213,6 +220,24 @@ const Meetings: React.FC = () => {
 
   if (loading) return <div className="text-center p-8">Loading schedule...</div>;
   if (error) return <div className="text-center p-4 bg-red-900/50 text-red-300 rounded-lg">{error}</div>;
+
+  if (!loading && leads.length === 0) {
+    return (
+      <div className="text-center p-8 max-w-2xl mx-auto">
+        <div className="text-center md:text-left mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold text-white">Meeting Scheduler</h1>
+          <p className="text-slate-400 mt-2">Book 15-minute slots for {new Date().toLocaleDateString()}.</p>
+        </div>
+        <Card>
+          <h2 className="text-xl font-bold text-primary-400 mb-4">No Leads Captured Yet</h2>
+          <p className="text-slate-300 mb-6">You need to capture at least one lead before you can start scheduling meetings.</p>
+          <a href="#/capture" className="inline-block rounded-lg bg-primary-600 px-6 py-3 font-semibold text-white hover:bg-primary-700 transition-all">
+            Go to Lead Capture
+          </a>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <>
