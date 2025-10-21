@@ -2,27 +2,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { EVENT_CODE } from '../lib/config';
 import Card from '../components/Card';
+import type { KPIsData } from '../types';
+import { generateKpiAnalysis } from '../lib/geminiService';
+import { hasGemini } from '../lib/ai';
 
-// Define the expected data structure from the v_kpis_conagui view
-interface ChannelDistribution {
-  [key: string]: number;
-}
-
-interface DailyLeads {
-  day: number;
-  count: number;
-}
-
-interface KPIsData {
-  total_leads: number;
-  leads_by_channel: ChannelDistribution;
-  leads_by_day: DailyLeads[];
-}
 
 const KPIs: React.FC = () => {
   const [kpis, setKpis] = useState<KPIsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiResponse, setAiResponse] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const fetchKPIs = useCallback(async () => {
     setLoading(true);
@@ -41,16 +34,16 @@ const KPIs: React.FC = () => {
         // Aggregate data from all rows (days)
         const totalLeads = data.reduce((sum, row) => sum + (row.leads_total || 0), 0);
         
-        const leadsByChannel: ChannelDistribution = data.reduce((acc, row) => {
+        const leadsByChannel: { [key: string]: number } = data.reduce((acc, row) => {
             if (row.guia > 0) acc['Guia'] = (acc['Guia'] || 0) + row.guia;
             if (row.agencia > 0) acc['Agencia'] = (acc['Agencia'] || 0) + row.agencia;
             if (row.hotel > 0) acc['Hotel'] = (acc['Hotel'] || 0) + row.hotel;
             if (row.mayorista > 0) acc['Mayorista'] = (acc['Mayorista'] || 0) + row.mayorista;
             // Add other potential channels from the view if they exist
             return acc;
-        }, {} as ChannelDistribution);
+        }, {} as { [key: string]: number });
 
-        const leadsByDay: DailyLeads[] = data.map(row => ({
+        const leadsByDay: { day: number, count: number }[] = data.map(row => ({
             day: row.day,
             count: row.leads_total || 0,
         })).sort((a, b) => a.day - b.day);
@@ -76,6 +69,21 @@ const KPIs: React.FC = () => {
   useEffect(() => {
     fetchKPIs();
   }, [fetchKPIs]);
+
+  const handleGenerateAnalysis = async () => {
+    if (!aiQuery.trim() || !kpis) return;
+    setIsAnalyzing(true);
+    setAiError(null);
+    setAiResponse('');
+    try {
+      const response = await generateKpiAnalysis(aiQuery, kpis);
+      setAiResponse(response);
+    } catch (err: any) {
+      setAiError(err.message || 'Failed to generate analysis.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const renderChannelDistribution = () => {
     if (!kpis || !kpis.leads_by_channel || kpis.total_leads === 0) {
@@ -208,6 +216,43 @@ const KPIs: React.FC = () => {
                 </div>
              </div>
           </Card>
+          {hasGemini() && (
+            <Card className="md:col-span-3">
+              <h3 className="text-lg font-semibold text-primary-400 mb-3">AI-Powered Event Analysis</h3>
+              <p className="text-sm text-slate-400 mb-4">
+                  Ask complex questions about your event data. The AI will use Thinking Mode for a deep analysis.
+              </p>
+              <textarea
+                  className="input w-full min-h-[80px]"
+                  placeholder="e.g., Based on the daily lead capture and channel distribution, what is our biggest opportunity for growth on the last day of the event? Suggest three concrete actions."
+                  value={aiQuery}
+                  onChange={(e) => setAiQuery(e.target.value)}
+                  disabled={isAnalyzing}
+              />
+              <button
+                  onClick={handleGenerateAnalysis}
+                  disabled={isAnalyzing || !aiQuery.trim()}
+                  className="mt-4 w-full rounded-lg bg-primary-600 py-3 font-semibold text-white hover:bg-primary-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+              >
+                  {isAnalyzing ? (
+                      <>
+                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="http://www.w3.org/2000/svg">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Analyzing with Thinking Mode...
+                      </>
+                  ) : "Generate Analysis"}
+              </button>
+              {aiError && <p className="text-red-400 text-sm text-center mt-4">{aiError}</p>}
+              {aiResponse && (
+                  <div className="mt-6 p-4 bg-slate-800/50 border border-slate-700 rounded-lg">
+                      <h4 className="text-md font-semibold text-white mb-2">Analysis Result:</h4>
+                      <div className="text-slate-300 whitespace-pre-wrap">{aiResponse}</div>
+                  </div>
+              )}
+            </Card>
+          )}
         </div>
       )}
       <style>{`

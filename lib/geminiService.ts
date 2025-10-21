@@ -1,5 +1,5 @@
 import { getGeminiClient } from './ai';
-import type { Lead } from '../types';
+import type { Lead, KPIsData } from '../types';
 
 export const generateWelcomeMessage = async (lead: Lead): Promise<string> => {
   const ai = getGeminiClient();
@@ -27,5 +27,49 @@ export const generateWelcomeMessage = async (lead: Lead): Promise<string> => {
   } catch (error) {
     console.error("Error generating welcome message:", error);
     return fallbackMessage;
+  }
+};
+
+export const generateKpiAnalysis = async (query: string, kpis: KPIsData): Promise<string> => {
+  const ai = getGeminiClient();
+  if (!ai) {
+    return "AI client is not available. Please configure the Gemini API key.";
+  }
+
+  const prompt = `
+You are an expert event analyst for "Arenal Conagui".
+You have been provided with the following Key Performance Indicator (KPI) data for the event.
+
+**KPI Data:**
+- Total Leads Captured: ${kpis.total_leads}
+- Leads by Channel:
+  ${Object.entries(kpis.leads_by_channel).map(([channel, count]) => `- ${channel}: ${count}`).join('\n  ')}
+- Leads Captured Per Day:
+  ${kpis.leads_by_day.map(({ day, count }) => `- Day ${day}: ${count}`).join('\n  ')}
+
+**User's Query:**
+"${query}"
+
+Please provide a detailed and insightful analysis based on the data to answer the user's query.
+Your response should be structured, clear, and actionable. Use markdown for formatting.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: prompt,
+      config: {
+        thinkingConfig: {
+          thinkingBudget: 32768,
+        },
+      },
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error generating KPI analysis:", error);
+    if (error instanceof Error) {
+        return `An error occurred while generating the analysis: ${error.message}`;
+    }
+    return "An unknown error occurred while generating the analysis.";
   }
 };

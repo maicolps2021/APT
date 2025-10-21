@@ -41,3 +41,18 @@ export interface MentionLog {
   mention_id: string; // The unique ID from content.ts
   type: 'mention' | 'micro';
 }
+
+export interface ChannelDistribution {
+  [key: string]: number;
+}
+
+export interface DailyLeads {
+  day: number;
+  count: number;
+}
+
+export interface KPIsData {
+  total_leads: number;
+  leads_by_channel: ChannelDistribution;
+  leads_by_day: DailyLeads[];
+}
