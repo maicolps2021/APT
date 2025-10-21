@@ -204,7 +204,7 @@ const Meetings: React.FC = () => {
   };
   
   const meetingsArray: MeetingLead[] = Array.from(meetings.values());
-  // Fix: Explicitly type the parameters of the sort function to resolve incorrect type inference.
+  // Fix: Explicitly typing the parameters of the sort function to resolve incorrect type inference.
   const sortedMeetings = meetingsArray.sort((a: MeetingLead, b: MeetingLead) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
       return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime();
