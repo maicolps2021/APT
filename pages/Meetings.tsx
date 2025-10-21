@@ -220,12 +220,15 @@ const Meetings: React.FC = () => {
       window.print();
   };
   
-  // FIX: Split array creation and sort to help TypeScript infer types correctly, which resolves the error on the following lines.
+  // FIX: Explicitly type sort callback parameters to fix 'unknown' type error.
   const meetingsArray: MeetingLead[] = Array.from(meetings.values());
-  const sortedMeetings = meetingsArray.sort((a, b) => {
+  const sortedMeetings = meetingsArray.sort((a: MeetingLead, b: MeetingLead) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
       return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime();
   });
+  
+  const now = new Date();
+  const nextMeetingIndex = sortedMeetings.findIndex(lead => lead.meeting_at && new Date(lead.meeting_at) > now);
 
   if (loading) return <div className="text-center p-8">Loading schedule...</div>;
   if (error) return <div className="text-center p-4 bg-red-900/50 text-red-300 rounded-lg">{error}</div>;
@@ -317,18 +320,43 @@ const Meetings: React.FC = () => {
             <Card>
                 <div id="print-agenda">
                 <h2 className="text-2xl font-bold text-white mb-1">Today's Agenda</h2>
-                <p className="text-sm text-slate-400 mb-4">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                    {/* Fix: Add explicit type for 'lead' to resolve type inference issue. */}
-                    {sortedMeetings.length > 0 ? sortedMeetings.map((lead: MeetingLead) => (
-                    <div key={lead.id} className="bg-slate-700/50 p-3 rounded-lg">
-                        <p className="font-mono text-sm text-primary-400">{lead.meeting_at ? new Date(lead.meeting_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'No Time'}</p>
-                        <p className="font-semibold text-white mt-1">{lead.name}</p>
-                        <p className="text-xs text-slate-300">{lead.company}</p>
-                        <p className="text-xs text-slate-400 mt-1">Owner: {lead.owner}</p>
-                    </div>
-                    )) : (
-                    <p className="text-slate-400 text-center py-8">No meetings scheduled yet.</p>
+                <p className="text-sm text-slate-400 mb-6">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-2 -mr-2">
+                    {sortedMeetings.length > 0 ? sortedMeetings.map((lead: MeetingLead, index) => {
+                      const isNext = index === nextMeetingIndex;
+                      const waLink = lead.whatsapp ? `https://wa.me/${lead.whatsapp.replace(/\D/g, "")}` : '';
+                      
+                      return (
+                        <div key={lead.id} className="relative pl-8 pb-4">
+                          {/* Timeline line - don't draw for the last item */}
+                          {index < sortedMeetings.length - 1 && 
+                            <div className="absolute left-2.5 top-5 h-full w-0.5 bg-slate-600"></div>
+                          }
+                          {/* Timeline marker */}
+                          <div className={`absolute left-0 top-2 h-5 w-5 rounded-full border-4 border-slate-800 ${isNext ? 'bg-primary-500 ring-4 ring-primary-500/30' : 'bg-slate-500'}`}></div>
+                          
+                          {/* Meeting card */}
+                          <div className="relative bg-slate-700/50 p-3 rounded-lg ml-1">
+                            <div className="absolute top-2 right-2 flex items-center space-x-2">
+                              {lead.whatsapp && (
+                                <a href={waLink} target="_blank" rel="noopener noreferrer" title={`WhatsApp ${lead.name}`} className="text-slate-400 hover:text-primary-400 transition-colors">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.894 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.433-9.89-9.889-9.89-5.452 0-9.887 4.428-9.888 9.891.001 2.23.651 4.385 1.886 6.205l.232.392-1.082 3.939 4.032-1.056.377.224z" /></svg>
+                                </a>
+                              )}
+                              {lead.email && (
+                                <a href={`mailto:${lead.email}`} title={`Email ${lead.name}`} className="text-slate-400 hover:text-primary-400 transition-colors">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+                                </a>
+                              )}
+                            </div>
+                            <p className={`font-mono text-sm ${isNext ? 'text-primary-300 font-bold' : 'text-primary-400'}`}>{lead.meeting_at ? new Date(lead.meeting_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'No Time'}</p>
+                            <p className="font-semibold text-white mt-1 pr-8">{lead.name}</p>
+                            <p className="text-xs text-slate-300">{lead.company}</p>
+                            <p className="text-xs text-slate-400 mt-2">Owner: {lead.owner}</p>
+                        </div>
+                      </div>
+                    )}) : (
+                      <p className="text-slate-400 text-center py-8">No meetings scheduled yet.</p>
                     )}
                 </div>
                 </div>
