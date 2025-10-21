@@ -21,10 +21,10 @@ const Home: React.FC = () => {
             <p className="text-slate-400">A streamlined form to quickly register new leads and generate a unique QR code for them.</p>
           </Card>
         </a>
-        <a href="#/mc" className="transform hover:scale-105 transition-transform duration-300">
+        <a href="#/leads" className="transform hover:scale-105 transition-transform duration-300">
           <Card className="h-full">
-            <h2 className="text-2xl font-bold text-primary-400 mb-2">MC Dashboard</h2>
-            <p className="text-slate-400">A private dashboard for organizers to view all captured leads in a real-time, comprehensive list.</p>
+            <h2 className="text-2xl font-bold text-primary-400 mb-2">Lead List</h2>
+            <p className="text-slate-400">View all captured leads in a real-time, comprehensive list with search and filtering capabilities.</p>
           </Card>
         </a>
         <a href="#/tv" className="transform hover:scale-105 transition-transform duration-300">

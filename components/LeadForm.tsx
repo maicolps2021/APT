@@ -31,8 +31,9 @@ export function LeadForm() {
       whatsapp: f.get("whatsapp"),
       email: f.get("email"),
       interest: f.get("interest"),
-      next_step: f.get("next_step"),
-      scoring: f.get("scoring") ?? "B",
+      // next_step and scoring removed for simplicity on the public form
+      next_step: 'Condiciones', // Keep a default internal value
+      scoring: "B",
     };
 
     const { error } = await supabase.from("leads").insert([payload]);
@@ -46,13 +47,13 @@ export function LeadForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3 text-slate-200">
-      <div className="grid grid-cols-2 gap-3">
+    <form onSubmit={onSubmit} className="space-y-4 text-slate-200">
+      <div className="grid grid-cols-2 gap-4">
         <input name="name" placeholder="Nombre y Apellido" required className="input" />
         <input name="company" placeholder="Empresa" className="input" />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         <select name="role" className="input" defaultValue="">
           <option value="" disabled>Canal (Guía/Agencia/Hotel/Mayorista)</option>
           <option>Guia</option><option>Agencia</option><option>Hotel</option><option>Mayorista</option><option>Otro</option>
@@ -63,21 +64,15 @@ export function LeadForm() {
         </select>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         <input name="whatsapp" placeholder="WhatsApp (+506…)" className="input" />
         <input type="email" name="email" placeholder="Email" className="input" />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <select name="next_step" className="input" defaultValue="Condiciones">
-          <option>Reunion</option><option>Llamada15</option><option>Condiciones</option><option>FamTrip</option>
-        </select>
-        <select name="scoring" className="input" defaultValue="B">
-          <option>A</option><option>B</option><option>C</option>
-        </select>
-      </div>
-
-      <button disabled={loading} className="w-full rounded-lg bg-primary-600 py-3 font-semibold text-white hover:bg-primary-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all">
+      {/* The next_step and scoring fields have been removed from the UI for a cleaner user experience. */}
+      {/* They are now assigned default values in the submission logic. */}
+      
+      <button disabled={loading} className="w-full rounded-lg bg-primary-600 py-3 font-semibold text-white hover:bg-primary-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all mt-2">
         {loading ? "Guardando…" : "Guardar lead"}
       </button>
 

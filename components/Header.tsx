@@ -11,7 +11,7 @@ const Header: React.FC = () => {
         <div className="space-x-4 md:space-x-6 text-sm md:text-base">
           <a href="#/" className="text-slate-300 hover:text-primary-400 transition-colors">Home</a>
           <a href="#/capture" className="text-slate-300 hover:text-primary-400 transition-colors">Capture Lead</a>
-          <a href="#/mc" className="text-slate-300 hover:text-primary-400 transition-colors">MC Dashboard</a>
+          <a href="#/leads" className="text-slate-300 hover:text-primary-400 transition-colors">Lead List</a>
           <a href="#/meetings" className="text-slate-300 hover:text-primary-400 transition-colors">Meetings</a>
           <a href="#/kpis" className="text-slate-300 hover:text-primary-400 transition-colors">KPIs</a>
           <a href="#/raffles" className="text-slate-300 hover:text-primary-400 transition-colors">Raffles</a>

@@ -9,6 +9,7 @@ import Meetings from './pages/Meetings';
 import Raffles from './pages/Raffles';
 import Materials from './pages/Materials';
 import Header from './components/Header';
+import LeadList from './pages/LeadList';
 
 const App: React.FC = () => {
   const [route, setRoute] = useState(window.location.hash);
@@ -40,6 +41,8 @@ const App: React.FC = () => {
         return <TV />;
       case '#/materials':
         return <Materials />;
+      case '#/leads':
+        return <LeadList />;
       case '#/':
       case '':
       default:
