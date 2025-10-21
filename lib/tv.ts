@@ -10,29 +10,29 @@ export type TVItem = {
 };
 
 export async function loadPlaylist(): Promise<TVItem[]> {
-  // 1. Get the public URL for the playlist.json file
+  // 1. Obtiene la URL pública para el archivo playlist.json
   const playlistPath = `${TV_PREFIX}/playlist.json`;
   const { data: playlistUrlData } = supabase.storage.from(TV_BUCKET).getPublicUrl(playlistPath);
 
   if (!playlistUrlData?.publicUrl) {
-    throw new Error("Could not construct public URL for playlist.json. Check bucket permissions and environment variables.");
+    throw new Error("No se pudo construir la URL pública para playlist.json. Revisa los permisos del bucket y las variables de entorno.");
   }
   
-  // 2. Fetch the playlist file
+  // 2. Obtiene el archivo de la playlist
   const res = await fetch(playlistUrlData.publicUrl);
   if (!res.ok) {
-    // This will now throw a more standard HTTP error if the file is not found (404)
-    throw new Error(`Failed to fetch playlist: ${res.status} ${res.statusText}. Make sure 'playlist.json' exists in '${TV_BUCKET}/${TV_PREFIX}' and the bucket is public.`);
+    // Esto ahora lanzará un error HTTP más estándar si no se encuentra el archivo (404)
+    throw new Error(`Fallo al obtener la playlist: ${res.status} ${res.statusText}. Asegúrate de que 'playlist.json' existe en '${TV_BUCKET}/${TV_PREFIX}' y que el bucket es público.`);
   }
   const json = await res.json() as { items: TVItem[] };
 
-  // 3. Construct the base URL for other assets in the same folder by removing the filename
+  // 3. Construye la URL base para otros activos en la misma carpeta eliminando el nombre del archivo
   const publicBase = playlistUrlData.publicUrl.replace(/playlist\.json$/, "");
 
-  // 4. Normalize asset URLs
+  // 4. Normaliza las URLs de los activos
   return (json.items || []).map(it => {
     const isAbsoluteUrl = /^https?:\/\//i.test(it.src);
-    // Prepend the base URL only if the src is a relative path
+    // Añade la URL base solo si el src es una ruta relativa
     return { ...it, src: isAbsoluteUrl ? it.src : `${publicBase}${it.src}` };
   });
 }
