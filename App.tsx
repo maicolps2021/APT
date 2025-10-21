@@ -5,6 +5,7 @@ import Capture from './pages/Capture';
 import MC from './pages/MC';
 import TV from './pages/TV';
 import KPIs from './pages/KPIs';
+import Meetings from './pages/Meetings';
 import Header from './components/Header';
 
 const App: React.FC = () => {
@@ -27,6 +28,8 @@ const App: React.FC = () => {
         return <Capture />;
       case '#/mc':
         return <MC />;
+      case '#/meetings':
+        return <Meetings />;
       case '#/kpis':
         return <KPIs />;
       case '#/tv':

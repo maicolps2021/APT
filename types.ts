@@ -15,4 +15,6 @@ export interface Lead {
   interest?: 'Tour' | 'Traslado' | 'Ambos';
   next_step?: 'Reunion' | 'Llamada15' | 'Condiciones' | 'FamTrip';
   scoring?: 'A' | 'B' | 'C';
+  owner?: string;
+  meeting_at?: string;
 }
