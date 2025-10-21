@@ -10,36 +10,29 @@ export type TVItem = {
 };
 
 export async function loadPlaylist(): Promise<TVItem[]> {
-  const basePath = `${TV_PREFIX}/playlist.json`;
-  const { data: signed, error } = await supabase.storage
-    .from(TV_BUCKET)
-    .createSignedUrl(basePath, 60);
+  // 1. Get the public URL for the playlist.json file
+  const playlistPath = `${TV_PREFIX}/playlist.json`;
+  const { data: playlistUrlData } = supabase.storage.from(TV_BUCKET).getPublicUrl(playlistPath);
 
-  if (error) {
-    console.error("Error creating signed URL for playlist:", error);
-    throw error;
+  if (!playlistUrlData?.publicUrl) {
+    throw new Error("Could not construct public URL for playlist.json. Check bucket permissions and environment variables.");
   }
   
-  if (!signed) {
-      throw new Error("Could not create a signed URL for the playlist.");
-  }
-
-  const res = await fetch(signed.signedUrl);
+  // 2. Fetch the playlist file
+  const res = await fetch(playlistUrlData.publicUrl);
   if (!res.ok) {
-    throw new Error(`Failed to fetch playlist: ${res.statusText}`);
+    // This will now throw a more standard HTTP error if the file is not found (404)
+    throw new Error(`Failed to fetch playlist: ${res.status} ${res.statusText}. Make sure 'playlist.json' exists in '${TV_BUCKET}/${TV_PREFIX}' and the bucket is public.`);
   }
   const json = await res.json() as { items: TVItem[] };
 
-  const { data: pubUrlData } = supabase.storage.from(TV_BUCKET).getPublicUrl(`${TV_PREFIX}/x`);
-  
-  if (!pubUrlData) {
-      throw new Error("Could not get public URL for storage bucket.");
-  }
+  // 3. Construct the base URL for other assets in the same folder by removing the filename
+  const publicBase = playlistUrlData.publicUrl.replace(/playlist\.json$/, "");
 
-  const publicBase = pubUrlData.publicUrl.replace(/x$/, "");
-
+  // 4. Normalize asset URLs
   return (json.items || []).map(it => {
-    const isAbs = /^https?:\/\//i.test(it.src);
-    return { ...it, src: isAbs ? it.src : `${publicBase}${it.src}` };
+    const isAbsoluteUrl = /^https?:\/\//i.test(it.src);
+    // Prepend the base URL only if the src is a relative path
+    return { ...it, src: isAbsoluteUrl ? it.src : `${publicBase}${it.src}` };
   });
 }
