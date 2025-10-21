@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { EVENT_CODE } from '../lib/config';
+import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Lead } from '../types';
 import Card from '../components/Card';
 
@@ -18,6 +18,7 @@ const LeadList: React.FC = () => {
         .from('leads')
         .select('*')
         .eq('event_code', EVENT_CODE)
+        .eq('org_id', ORG_UUID)
         .order('created_at', { ascending: false });
 
       if (error) throw error;

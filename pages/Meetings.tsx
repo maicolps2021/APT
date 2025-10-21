@@ -112,6 +112,7 @@ const Meetings: React.FC = () => {
         .from('leads')
         .select('id, name, company')
         .eq('event_code', EVENT_CODE)
+        .eq('org_id', ORG_UUID)
         .order('created_at', { ascending: false })
         .limit(200);
 
@@ -213,6 +214,7 @@ const Meetings: React.FC = () => {
   // they were being inferred as 'unknown', causing errors when accessing the 'meeting_at' property.
   // Fix: Add explicit types to sort callback parameters to resolve 'unknown' type error.
   // Fix: Explicitly type `a` and `b` as `MeetingLead` to resolve TypeScript error.
+  // FIX: Explicitly type `a` and `b` as `MeetingLead` to resolve 'unknown' type error.
   const sortedMeetings = Array.from(meetings.values()).sort((a: MeetingLead, b: MeetingLead) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
       return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime();
