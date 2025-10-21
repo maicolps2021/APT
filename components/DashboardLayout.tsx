@@ -175,7 +175,6 @@ const Logo = () => {
     <div className="grid size-10 shrink-0 place-content-center rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-sm">
       <svg
         width="20"
-        height="auto"
         viewBox="0 0 50 39"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"

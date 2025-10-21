@@ -39,7 +39,6 @@ export function LeadForm() {
     if (!formRef.current) return null;
     const f = new FormData(formRef.current);
     const slot: 'AM' | 'PM' = new Date().getHours() < 13 ? "AM" : "PM";
-    const formNotes = f.get("notes") as string || '';
 
     return {
       org_id: ORG_UUID,
@@ -57,7 +56,6 @@ export function LeadForm() {
       next_step: 'Condiciones' as const,
       scoring: "B" as const,
       tags: tags,
-      notes: notes ? notes : formNotes,
     };
   };
 
@@ -149,9 +147,7 @@ export function LeadForm() {
             ))}
           </div>
         </div>
-        
-        <textarea name="notes" placeholder="Notas adicionales..." className="input h-20" />
-        
+                
         <button disabled={loading || !!duplicate} className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-all mt-2">
           {loading ? "Verificando…" : "Guardar lead"}
         </button>
