@@ -215,7 +215,7 @@ const Meetings: React.FC = () => {
   // Fix: Explicitly type `a` and `b` as `MeetingLead` to resolve TypeScript error.
   const sortedMeetings = Array.from(meetings.values()).sort((a: MeetingLead, b: MeetingLead) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
-      return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime()
+      return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime();
   });
 
   if (loading) return <div className="text-center p-8">Loading schedule...</div>;

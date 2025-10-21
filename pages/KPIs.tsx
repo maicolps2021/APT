@@ -29,21 +29,38 @@ const KPIs: React.FC = () => {
     setError(null);
 
     try {
+      // The view might return multiple rows if there are multiple days of data
       const { data, error } = await supabase
         .from('v_kpis_conagui')
         .select('*')
-        .eq('event_code', EVENT_CODE)
-        .single();
+        .eq('event_code', EVENT_CODE);
 
       if (error) throw error;
       
-      if (data) {
-        const parsedData: KPIsData = {
-          total_leads: data.total_leads || 0,
-          leads_by_channel: typeof data.leads_by_channel === 'object' && data.leads_by_channel !== null ? data.leads_by_channel : {},
-          leads_by_day: Array.isArray(data.leads_by_day) ? data.leads_by_day.sort((a, b) => a.day - b.day) : [],
-        };
-        setKpis(parsedData);
+      if (data && data.length > 0) {
+        // Aggregate data from all rows (days)
+        const totalLeads = data.reduce((sum, row) => sum + (row.leads_total || 0), 0);
+        
+        const leadsByChannel: ChannelDistribution = data.reduce((acc, row) => {
+            if (row.guia > 0) acc['Guia'] = (acc['Guia'] || 0) + row.guia;
+            if (row.agencia > 0) acc['Agencia'] = (acc['Agencia'] || 0) + row.agencia;
+            if (row.hotel > 0) acc['Hotel'] = (acc['Hotel'] || 0) + row.hotel;
+            if (row.mayorista > 0) acc['Mayorista'] = (acc['Mayorista'] || 0) + row.mayorista;
+            // Add other potential channels from the view if they exist
+            return acc;
+        }, {} as ChannelDistribution);
+
+        const leadsByDay: DailyLeads[] = data.map(row => ({
+            day: row.day,
+            count: row.leads_total || 0,
+        })).sort((a, b) => a.day - b.day);
+
+        setKpis({
+          total_leads: totalLeads,
+          leads_by_channel: leadsByChannel,
+          leads_by_day: leadsByDay,
+        });
+
       } else {
         setKpis(null);
       }
@@ -65,8 +82,6 @@ const KPIs: React.FC = () => {
       return <p className="text-slate-400">No channel data available.</p>;
     }
 
-    // Fix: Ensure channel counts are numbers to prevent type errors in sorting and percentage calculations.
-    // This resolves errors related to arithmetic operations on potentially non-numeric types.
     const channels = Object.entries(kpis.leads_by_channel)
       .map(([channel, count]): [string, number] => [channel, Number(count) || 0])
       .sort(([, a], [, b]) => b - a);
@@ -128,7 +143,7 @@ const KPIs: React.FC = () => {
             className="mt-4 md:mt-0 flex items-center justify-center rounded-lg bg-slate-700 px-4 py-2 font-semibold text-white hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed transition-all"
         >
           {loading ? (
-            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="http://www.w3.org/2000/svg">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
