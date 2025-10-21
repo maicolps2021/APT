@@ -39,8 +39,6 @@ const Materials: React.FC = () => {
         document.body.innerHTML = printContents;
         window.print();
         document.body.innerHTML = originalContents;
-        // The page will reload after printing to restore its state, but this is a simple approach
-        // without complex state management for a utility page.
         window.location.reload(); 
     }
   };
@@ -49,31 +47,31 @@ const Materials: React.FC = () => {
     <>
       <div className="mx-auto max-w-5xl" id="materials-page">
         <div className="text-center mb-10">
-          <h1 className="text-3xl md:text-4xl font-bold text-white">Event Materials</h1>
-          <p className="text-slate-400 mt-2">Download lead data and print essential documents.</p>
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Event Materials</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-2">Download lead data and print essential documents.</p>
         </div>
         
         <Card>
-            <h2 className="text-xl font-bold text-primary-400 mb-4">Downloads & Printables</h2>
+            <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">Downloads & Printables</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <button 
                     onClick={handleDownloadCsv}
                     disabled={isDownloading}
-                    className="w-full rounded-lg bg-primary-600 p-4 font-semibold text-white hover:bg-primary-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                    className="w-full rounded-lg bg-blue-600 p-4 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-all flex items-center justify-center"
                 >
                     {isDownloading ? 'Exporting...' : 'Download Leads CSV'}
                 </button>
-                 <button onClick={() => handlePrint('print-ballot')} className="w-full rounded-lg bg-slate-700 p-4 font-semibold text-white hover:bg-slate-600 transition-all">
+                 <button onClick={() => handlePrint('print-ballot')} className="w-full rounded-lg bg-gray-200 dark:bg-gray-700 p-4 font-semibold text-gray-800 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
                     Imprimir Papeleta A5
                 </button>
-                <button onClick={() => handlePrint('print-legal')} className="w-full rounded-lg bg-slate-700 p-4 font-semibold text-white hover:bg-slate-600 transition-all">
+                <button onClick={() => handlePrint('print-legal')} className="w-full rounded-lg bg-gray-200 dark:bg-gray-700 p-4 font-semibold text-gray-800 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
                     Imprimir Legal A5
                 </button>
-                 <button onClick={() => handlePrint('print-cue-cards')} className="w-full rounded-lg bg-slate-700 p-4 font-semibold text-white hover:bg-slate-600 transition-all">
+                 <button onClick={() => handlePrint('print-cue-cards')} className="w-full rounded-lg bg-gray-200 dark:bg-gray-700 p-4 font-semibold text-gray-800 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
                     Imprimir Cue Cards MC
                 </button>
             </div>
-             {error && <p className="text-red-400 text-sm text-center mt-4">{error}</p>}
+             {error && <p className="text-red-500 text-sm text-center mt-4">{error}</p>}
         </Card>
       </div>
 

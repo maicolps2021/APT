@@ -5,6 +5,7 @@ import Card from '../components/Card';
 import type { KPIsData } from '../types';
 import { generateKpiAnalysis } from '../lib/geminiService';
 import { hasGemini } from '../lib/ai';
+import { RefreshCw, LoaderCircle } from 'lucide-react';
 
 
 const KPIs: React.FC = () => {
@@ -22,7 +23,6 @@ const KPIs: React.FC = () => {
     setError(null);
 
     try {
-      // The view might return multiple rows if there are multiple days of data
       const { data, error } = await supabase
         .from('v_kpis_conagui')
         .select('*')
@@ -31,7 +31,6 @@ const KPIs: React.FC = () => {
       if (error) throw error;
       
       if (data && data.length > 0) {
-        // Aggregate data from all rows (days)
         const totalLeads = data.reduce((sum, row) => sum + (row.leads_total || 0), 0);
         
         const leadsByChannel: { [key: string]: number } = data.reduce((acc, row) => {
@@ -39,7 +38,6 @@ const KPIs: React.FC = () => {
             if (row.agencia > 0) acc['Agencia'] = (acc['Agencia'] || 0) + row.agencia;
             if (row.hotel > 0) acc['Hotel'] = (acc['Hotel'] || 0) + row.hotel;
             if (row.mayorista > 0) acc['Mayorista'] = (acc['Mayorista'] || 0) + row.mayorista;
-            // Add other potential channels from the view if they exist
             return acc;
         }, {} as { [key: string]: number });
 
@@ -87,7 +85,7 @@ const KPIs: React.FC = () => {
 
   const renderChannelDistribution = () => {
     if (!kpis || !kpis.leads_by_channel || kpis.total_leads === 0) {
-      return <p className="text-slate-400">No channel data available.</p>;
+      return <p className="text-gray-500 dark:text-gray-400">No channel data available.</p>;
     }
 
     const channels = Object.entries(kpis.leads_by_channel)
@@ -100,8 +98,8 @@ const KPIs: React.FC = () => {
           const percentage = ((count / kpis.total_leads) * 100).toFixed(1);
           return (
             <li key={channel} className="flex justify-between items-center text-sm">
-              <span className="text-slate-300 capitalize">{channel}</span>
-              <span className="font-semibold text-white">{count} ({percentage}%)</span>
+              <span className="text-gray-700 dark:text-gray-300 capitalize">{channel}</span>
+              <span className="font-semibold text-gray-900 dark:text-white">{count} ({percentage}%)</span>
             </li>
           );
         })}
@@ -111,27 +109,27 @@ const KPIs: React.FC = () => {
   
   const renderBarChart = () => {
     if (!kpis || !kpis.leads_by_day || kpis.leads_by_day.length === 0) {
-      return <div className="flex items-center justify-center h-48 bg-slate-700/50 rounded-lg"><p className="text-slate-400">No data for chart.</p></div>;
+      return <div className="flex items-center justify-center h-48 bg-gray-100 dark:bg-gray-800/50 rounded-lg"><p className="text-gray-500 dark:text-gray-400">No data for chart.</p></div>;
     }
 
     const maxCount = Math.max(...kpis.leads_by_day.map(d => d.count), 0);
     if (maxCount === 0) {
-         return <div className="flex items-center justify-center h-48 bg-slate-700/50 rounded-lg"><p className="text-slate-400">No leads to display in chart.</p></div>;
+         return <div className="flex items-center justify-center h-48 bg-gray-100 dark:bg-gray-800/50 rounded-lg"><p className="text-gray-500 dark:text-gray-400">No leads to display in chart.</p></div>;
     }
 
     return (
-      <div className="flex justify-around items-end h-48 w-full bg-slate-700/50 p-4 rounded-lg space-x-4">
+      <div className="flex justify-around items-end h-48 w-full bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg space-x-4">
         {kpis.leads_by_day.map(({ day, count }) => (
           <div key={day} className="flex flex-col items-center flex-1 h-full pt-4">
              <div className="flex flex-col items-center justify-end w-full h-full">
-                <span className="text-xs text-slate-300 mb-1">{count}</span>
+                <span className="text-xs text-gray-600 dark:text-gray-300 mb-1">{count}</span>
                 <div 
-                    className="w-full bg-primary-500 rounded-t-md hover:bg-primary-400 transition-all" 
+                    className="w-full bg-blue-500 rounded-t-md hover:bg-blue-400 transition-all" 
                     style={{ height: `${(count / maxCount) * 85}%` }}
                     title={`Day ${day}: ${count} leads`}
                 ></div>
              </div>
-            <span className="text-xs mt-2 text-slate-300 font-bold">Day {day}</span>
+            <span className="text-xs mt-2 text-gray-700 dark:text-gray-300 font-bold">Day {day}</span>
           </div>
         ))}
       </div>
@@ -142,84 +140,75 @@ const KPIs: React.FC = () => {
     <div className="mx-auto max-w-6xl">
       <div className="flex flex-col md:flex-row justify-between items-center mb-8">
         <div className="text-center md:text-left">
-            <h1 className="text-3xl md:text-4xl font-bold text-white">KPI Dashboard</h1>
-            <p className="text-slate-400 mt-2">Key performance indicators for {EVENT_CODE}.</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">KPI Dashboard</h1>
+            <p className="text-gray-500 dark:text-gray-400 mt-2">Key performance indicators for {EVENT_CODE}.</p>
         </div>
         <button 
             onClick={fetchKPIs} 
             disabled={loading}
-            className="mt-4 md:mt-0 flex items-center justify-center rounded-lg bg-slate-700 px-4 py-2 font-semibold text-white hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed transition-all"
+            className="mt-4 md:mt-0 flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-2 font-semibold text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 disabled:bg-gray-200 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-all"
         >
-          {loading ? (
-            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-            </svg>
-          )}
+          <RefreshCw className={`mr-2 h-5 w-5 ${loading ? 'animate-spin': ''}`} />
           {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
       {loading && !kpis && (
-          <div className="text-center p-8 text-slate-400">Loading KPIs...</div>
+          <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading KPIs...</div>
       )}
 
-      {error && <div className="text-center p-4 bg-red-900/50 border border-red-700 rounded-lg text-red-300">{error}</div>}
+      {error && <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>}
 
       {!loading && !error && !kpis && (
-        <div className="text-center p-8 text-slate-400">No KPI data found for this event.</div>
+        <div className="text-center p-8 text-gray-500 dark:text-gray-400">No KPI data found for this event.</div>
       )}
 
       {kpis && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
           <Card className="md:col-span-1">
-            <h3 className="text-lg font-semibold text-primary-400 mb-3">Total Leads</h3>
-            <p className="text-5xl font-bold text-white">{kpis.total_leads}</p>
+            <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">Total Leads</h3>
+            <p className="text-5xl font-bold text-gray-900 dark:text-white">{kpis.total_leads}</p>
           </Card>
           <Card className="md:col-span-2">
-            <h3 className="text-lg font-semibold text-primary-400 mb-3">Leads by Channel</h3>
+            <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">Leads by Channel</h3>
             {renderChannelDistribution()}
           </Card>
 
           <Card className="md:col-span-3">
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-1">
-                    <h3 className="text-lg font-semibold text-primary-400 mb-3">Leads by Day</h3>
-                    <table className="min-w-full text-slate-200">
-                        <thead className="border-b border-slate-600">
+                    <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">Leads by Day</h3>
+                    <table className="min-w-full text-gray-800 dark:text-gray-200">
+                        <thead className="border-b border-gray-200 dark:border-gray-600">
                             <tr>
-                            <th className="py-2 text-left text-xs font-medium text-slate-300 uppercase tracking-wider">Day</th>
-                            <th className="py-2 text-right text-xs font-medium text-slate-300 uppercase tracking-wider">Leads</th>
+                            <th className="py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Day</th>
+                            <th className="py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Leads</th>
                             </tr>
                         </thead>
                         <tbody>
                         {kpis.leads_by_day && kpis.leads_by_day.length > 0 ? (
                             kpis.leads_by_day.map(({ day, count }) => (
-                                <tr key={day} className="border-b border-slate-700 last:border-b-0">
+                                <tr key={day} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
                                     <td className="py-2">{day}</td>
                                     <td className="py-2 text-right font-semibold">{count}</td>
                                 </tr>
                             ))
                         ) : (
-                            <tr><td colSpan={2} className="py-4 text-center text-slate-400">No daily data.</td></tr>
+                            <tr><td colSpan={2} className="py-4 text-center text-gray-500 dark:text-gray-400">No daily data.</td></tr>
                         )}
                         </tbody>
                     </table>
                 </div>
                 <div className="lg:col-span-2">
-                    <h3 className="text-lg font-semibold text-primary-400 mb-3">Daily Distribution</h3>
+                    <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">Daily Distribution</h3>
                     {renderBarChart()}
                 </div>
              </div>
           </Card>
           {hasGemini() && (
             <Card className="md:col-span-3">
-              <h3 className="text-lg font-semibold text-primary-400 mb-3">AI-Powered Event Analysis</h3>
-              <p className="text-sm text-slate-400 mb-4">
+              <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">AI-Powered Event Analysis</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                   Ask complex questions about your event data. The AI will use Thinking Mode for a deep analysis.
               </p>
               <textarea
@@ -232,23 +221,20 @@ const KPIs: React.FC = () => {
               <button
                   onClick={handleGenerateAnalysis}
                   disabled={isAnalyzing || !aiQuery.trim()}
-                  className="mt-4 w-full rounded-lg bg-primary-600 py-3 font-semibold text-white hover:bg-primary-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all flex items-center justify-center"
+                  className="mt-4 w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-all flex items-center justify-center"
               >
                   {isAnalyzing ? (
                       <>
-                          <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
+                          <LoaderCircle className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
                           Analyzing with Thinking Mode...
                       </>
                   ) : "Generate Analysis"}
               </button>
-              {aiError && <p className="text-red-400 text-sm text-center mt-4">{aiError}</p>}
+              {aiError && <p className="text-red-500 text-sm text-center mt-4">{aiError}</p>}
               {aiResponse && (
-                  <div className="mt-6 p-4 bg-slate-800/50 border border-slate-700 rounded-lg">
-                      <h4 className="text-md font-semibold text-white mb-2">Analysis Result:</h4>
-                      <div className="text-slate-300 whitespace-pre-wrap">{aiResponse}</div>
+                  <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+                      <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-2">Analysis Result:</h4>
+                      <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none">{aiResponse}</div>
                   </div>
               )}
             </Card>

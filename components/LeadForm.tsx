@@ -41,14 +41,9 @@ export function LeadForm() {
     const slot: 'AM' | 'PM' = new Date().getHours() < 13 ? "AM" : "PM";
     const formNotes = f.get("notes") as string || '';
 
-    // FIX: Cast FormDataEntryValue to string or specific types to match the 'Lead' interface.
-    // FormData.get() can return string, File, or null, which is not directly assignable.
     return {
       org_id: ORG_UUID,
       event_code: EVENT_CODE,
-      // FIX: The 'source' property was inferred as a generic 'string', which is not assignable
-      // to the specific literal union type '"QR" | "MANUAL"' in the Lead interface. Using
-      // 'as const' tells TypeScript to infer the most specific type, 'QR', resolving the error.
       source: "QR" as const,
       day: mapDay(),
       slot,
@@ -114,7 +109,7 @@ export function LeadForm() {
 
   return (
     <>
-      <form onSubmit={onSubmit} ref={formRef} className="space-y-4 text-slate-200">
+      <form onSubmit={onSubmit} ref={formRef} className="space-y-4 text-gray-800 dark:text-gray-200">
         <div className="grid grid-cols-2 gap-4">
           <input name="name" placeholder="Nombre y Apellido" required className="input" />
           <input name="company" placeholder="Empresa" className="input" />
@@ -145,8 +140,8 @@ export function LeadForm() {
                 onClick={() => handleTagToggle(tag)}
                 className={`px-3 py-1 text-sm rounded-full transition-colors ${
                   tags.includes(tag)
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
                 }`}
               >
                 {tag}
@@ -157,24 +152,24 @@ export function LeadForm() {
         
         <textarea name="notes" placeholder="Notas adicionales..." className="input h-20" />
         
-        <button disabled={loading || !!duplicate} className="w-full rounded-lg bg-primary-600 py-3 font-semibold text-white hover:bg-primary-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all mt-2">
+        <button disabled={loading || !!duplicate} className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-all mt-2">
           {loading ? "Verificando…" : "Guardar lead"}
         </button>
 
-        {ok && <p className="text-primary-400 text-sm text-center">¡Lead guardado! Te contactamos en ≤2 horas.</p>}
-        {err && <p className="text-red-400 text-sm text-center">{err}</p>}
+        {ok && <p className="text-green-600 dark:text-green-400 text-sm text-center">¡Lead guardado! Te contactamos en ≤2 horas.</p>}
+        {err && <p className="text-red-500 dark:text-red-400 text-sm text-center">{err}</p>}
       </form>
       {duplicate && (
-        <div className="mt-4 border border-yellow-500 bg-yellow-900/50 p-4 rounded-lg text-yellow-200 animate-fade-in">
+        <div className="mt-4 border border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg text-yellow-800 dark:text-yellow-200 animate-fade-in">
            <h3 className="font-bold text-lg">⚠️ Posible Duplicado Encontrado</h3>
            <p className="text-sm">Ya existe un lead con datos de contacto similares:</p>
-           <div className="my-2 p-2 bg-slate-800 rounded text-sm">
+           <div className="my-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm">
               <p><strong>Nombre:</strong> {duplicate.name}</p>
               <p><strong>Empresa:</strong> {duplicate.company}</p>
            </div>
            <div className="flex gap-4 mt-4">
-              <button type="button" onClick={() => setDuplicate(null)} className="w-full rounded-lg bg-slate-600 py-2 font-semibold text-white hover:bg-slate-500 transition-all">Cancelar</button>
-              <button type="button" onClick={handleCreateAnyway} disabled={loading} className="w-full rounded-lg bg-yellow-600 py-2 font-semibold text-white hover:bg-yellow-700 transition-all disabled:bg-slate-600">
+              <button type="button" onClick={() => setDuplicate(null)} className="w-full rounded-lg bg-gray-500 py-2 font-semibold text-white hover:bg-gray-600 transition-all">Cancelar</button>
+              <button type="button" onClick={handleCreateAnyway} disabled={loading} className="w-full rounded-lg bg-yellow-600 py-2 font-semibold text-white hover:bg-yellow-700 transition-all disabled:bg-gray-500">
                 {loading ? "Guardando..." : "Crear de todas formas"}
               </button>
            </div>

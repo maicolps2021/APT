@@ -8,8 +8,8 @@ import KPIs from './pages/KPIs';
 import Meetings from './pages/Meetings';
 import Raffles from './pages/Raffles';
 import Materials from './pages/Materials';
-import Header from './components/Header';
 import LeadList from './pages/LeadList';
+import DashboardLayout from './components/DashboardLayout';
 
 const App: React.FC = () => {
   const [route, setRoute] = useState(window.location.hash);
@@ -49,14 +49,15 @@ const App: React.FC = () => {
         return <Home />;
     }
   };
+  
+  if (route === '#/tv') {
+    return <TV />;
+  }
 
   return (
-    <div className="min-h-screen bg-slate-900 font-sans">
-      <Header />
-      <main className="container mx-auto p-4 md:p-8">
-        {renderPage()}
-      </main>
-    </div>
+    <DashboardLayout>
+      {renderPage()}
+    </DashboardLayout>
   );
 };
 

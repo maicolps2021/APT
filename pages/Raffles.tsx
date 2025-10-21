@@ -18,7 +18,6 @@ const Raffles: React.FC = () => {
         setLoading(true);
         setError(null);
         try {
-            // Fetch drawn raffles and join with leads table to get winner's name
             const { data, error } = await supabase
                 .from('raffles')
                 .select(`
@@ -35,7 +34,6 @@ const Raffles: React.FC = () => {
 
             if (error) throw error;
             
-            // The join result is nested, so we type assert it correctly
             setPastRaffles((data as any[]) || []);
         } catch (err: any) {
             console.error("Error fetching past raffles:", err);
@@ -52,34 +50,31 @@ const Raffles: React.FC = () => {
     return (
         <div className="mx-auto max-w-6xl">
             <div className="text-center mb-8">
-                <h1 className="text-3xl md:text-4xl font-bold text-white">Raffles & Giveaways</h1>
-                <p className="text-slate-400 mt-2">Manage prize draws transparently.</p>
+                <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Raffles & Giveaways</h1>
+                <p className="text-gray-500 dark:text-gray-400 mt-2">Manage prize draws transparently.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Left Side: Conduct a new raffle */}
                 <div>
                     <RafflePanel onRaffleDrawn={fetchPastRaffles} />
                 </div>
-
-                {/* Right Side: List of past winners */}
                 <div>
                     <Card>
-                        <h2 className="text-xl font-bold text-primary-400 mb-4">Raffle History</h2>
-                        {loading && <p className="text-slate-400">Loading history...</p>}
-                        {error && <p className="text-red-400 text-sm">{error}</p>}
+                        <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">Raffle History</h2>
+                        {loading && <p className="text-gray-500 dark:text-gray-400">Loading history...</p>}
+                        {error && <p className="text-red-500 text-sm">{error}</p>}
                         {!loading && pastRaffles.length === 0 && (
-                            <p className="text-slate-400 text-center py-8">No raffles have been drawn yet.</p>
+                            <p className="text-gray-500 dark:text-gray-400 text-center py-8">No raffles have been drawn yet.</p>
                         )}
                         {!loading && pastRaffles.length > 0 && (
                             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                                 {pastRaffles.map(raffle => (
-                                    <div key={raffle.id} className="bg-slate-700/50 p-4 rounded-lg">
-                                        <p className="text-xs text-slate-400">{new Date(raffle.drawn_at).toLocaleString()}</p>
-                                        <p className="font-semibold text-white mt-1">Prize: <span className="text-primary-400">{raffle.prize}</span></p>
+                                    <div key={raffle.id} className="bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{new Date(raffle.drawn_at).toLocaleString()}</p>
+                                        <p className="font-semibold text-gray-900 dark:text-white mt-1">Prize: <span className="text-blue-600 dark:text-blue-400">{raffle.prize}</span></p>
                                         <div className="mt-2 text-sm">
-                                            <p className="text-slate-200">Winner: <span className="font-bold">{raffle.winner?.name || 'N/A'}</span></p>
-                                            <p className="text-slate-300">Company: {raffle.winner?.company || 'N/A'}</p>
+                                            <p className="text-gray-800 dark:text-gray-200">Winner: <span className="font-bold">{raffle.winner?.name || 'N/A'}</span></p>
+                                            <p className="text-gray-600 dark:text-gray-300">Company: {raffle.winner?.company || 'N/A'}</p>
                                         </div>
                                     </div>
                                 ))}
