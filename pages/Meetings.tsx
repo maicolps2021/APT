@@ -8,6 +8,10 @@ import Card from '../components/Card';
 // Type for the leads used in autocomplete, to avoid fetching all data
 type AutocompleteLead = Pick<Lead, 'id' | 'name' | 'company'>;
 
+// FIX: Define a specific type for meeting data to match the partial data fetched from Supabase.
+// This resolves type errors throughout the component by ensuring `meetings` state is strongly typed.
+type MeetingLead = Pick<Lead, 'id' | 'name' | 'company' | 'whatsapp' | 'email' | 'meeting_at' | 'owner'>;
+
 // Generates time slots from 08:30 to 17:00 in 15-min increments
 const generateTimeSlots = () => {
   const slots = [];
@@ -84,7 +88,8 @@ const LeadAutocomplete: React.FC<{
 const Meetings: React.FC = () => {
   const [owner, setOwner] = useState('Admin');
   const [leads, setLeads] = useState<AutocompleteLead[]>([]);
-  const [meetings, setMeetings] = useState<Map<string, Lead>>(new Map());
+  // FIX: Use the strongly-typed MeetingLead for the state.
+  const [meetings, setMeetings] = useState<Map<string, MeetingLead>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,15 +126,15 @@ const Meetings: React.FC = () => {
 
       if (meetingError) throw meetingError;
       
-      const meetingsMap = new Map<string, Lead>();
+      // FIX: Use the strongly-typed MeetingLead for the map.
+      const meetingsMap = new Map<string, MeetingLead>();
       if (meetingData) {
-        // Fix: Cast meetingData to any[] to allow iteration, as Supabase may return 'unknown'.
-        for (const lead of (meetingData as any[])) {
-          const typedLead = lead as Lead;
-          if (typedLead.meeting_at) {
+        // FIX: Directly cast the fetched data to MeetingLead[] for type safety.
+        for (const lead of (meetingData as MeetingLead[])) {
+          if (lead.meeting_at) {
             // Display time is converted from UTC to local for the user
-            const time = new Date(typedLead.meeting_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-            meetingsMap.set(time, typedLead);
+            const time = new Date(lead.meeting_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+            meetingsMap.set(time, lead);
           }
         }
       }
@@ -187,8 +192,8 @@ const Meetings: React.FC = () => {
       console.error('Error assigning meeting:', error);
       alert('Failed to schedule meeting.');
     } else if (data) {
-      // Fix: Use a double cast through 'unknown' to safely convert the Supabase response to the Lead type.
-      setMeetings(prev => new Map(prev).set(time, data as unknown as Lead));
+      // FIX: Ensure the updated meeting data is cast to MeetingLead before updating state.
+      setMeetings(prev => new Map(prev).set(time, data as unknown as MeetingLead));
     }
   };
   
