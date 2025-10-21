@@ -220,8 +220,10 @@ const Meetings: React.FC = () => {
       window.print();
   };
   
-  // FIX: Explicitly type sort callback parameters to fix 'unknown' type error.
   const meetingsArray: MeetingLead[] = Array.from(meetings.values());
+  // FIX: The sort callback parameters 'a' and 'b' were being inferred as 'unknown', leading to a runtime error.
+  // Explicitly typing them as 'MeetingLead' allows TypeScript to understand their shape and permits safe
+  // access to the 'meeting_at' property for comparison.
   const sortedMeetings = meetingsArray.sort((a: MeetingLead, b: MeetingLead) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
       return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime();

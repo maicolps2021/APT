@@ -18,6 +18,8 @@ export interface Lead {
   scoring?: 'A' | 'B' | 'C';
   owner?: string;
   meeting_at?: string;
+  notes?: string;
+  tags?: string[];
 }
 
 export interface Raffle {
