@@ -1,0 +1,5 @@
+{
+  "name": "Arenal Conagui Lead Capture",
+  "description": "An elegant web application for capturing leads at events. Features real-time dashboards for organizers and a dynamic TV display with AI-generated welcome messages for attendees.",
+  "requestFramePermissions": []
+}
