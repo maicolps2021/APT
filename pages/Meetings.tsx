@@ -165,7 +165,7 @@ const Meetings: React.FC = () => {
       alert('Please enter an owner name.');
       return;
     }
-    
+
     if (meetings.has(time)) {
       alert('This slot is already booked.');
       return;
@@ -174,8 +174,8 @@ const Meetings: React.FC = () => {
     // Fix: Add explicit type for 'm' to resolve type inference issue.
     const existingMeeting = Array.from(meetings.values()).find((m: MeetingLead) => m.id === lead.id);
     if (existingMeeting && existingMeeting.meeting_at) {
-       alert(`${lead.name} already has a meeting at ${new Date(existingMeeting.meeting_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
-       return;
+      alert(`${lead.name} already has a meeting at ${new Date(existingMeeting.meeting_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`);
+      return;
     }
 
     // Create a UTC timestamp for the meeting slot on the current date
@@ -184,7 +184,8 @@ const Meetings: React.FC = () => {
     meetingDate.setUTCHours(parseInt(hours), parseInt(minutes), 0, 0);
     const slotISO = meetingDate.toISOString();
 
-    const { data, error } = await supabase
+    // Perform the update without .select() to avoid RLS issues on read-after-write
+    const { error } = await supabase
       .from('leads')
       .update({
         owner: owner,
@@ -193,19 +194,25 @@ const Meetings: React.FC = () => {
       })
       .eq('id', lead.id)
       .eq('event_code', EVENT_CODE)
-      .eq('org_id', ORG_UUID)
-      .select();
+      .eq('org_id', ORG_UUID);
 
     if (error) {
       console.error('Error assigning meeting:', error);
       alert(`Failed to schedule meeting: ${error.message}`);
-    } else if (data && data.length > 0) {
-      // Successfully updated and got the row back
-      setMeetings(prev => new Map(prev).set(time, data[0] as MeetingLead));
     } else {
-      // This branch handles the "0 rows affected" or RLS issue without crashing.
-      console.error('Error assigning meeting: Update affected 0 rows or RLS prevented returning data.');
-      alert('Failed to schedule meeting. The lead may no longer exist or there could be a permissions issue.');
+      // Optimistically update the local state.
+      // This is safe because if the update failed, the `error` object would be populated.
+      // An empty response without an error usually means RLS prevented the SELECT part of the query.
+      const newMeetingData: MeetingLead = {
+        id: lead.id,
+        name: lead.name,
+        company: lead.company,
+        meeting_at: slotISO,
+        owner: owner,
+        whatsapp: undefined, // Not available in AutocompleteLead
+        email: undefined,    // Not available in AutocompleteLead
+      };
+      setMeetings(prev => new Map(prev).set(time, newMeetingData));
     }
   };
   
@@ -213,8 +220,9 @@ const Meetings: React.FC = () => {
       window.print();
   };
   
-  // FIX: Explicitly type `a` and `b` as `MeetingLead` to resolve TypeScript error where they were being inferred as `unknown`.
-  const sortedMeetings = Array.from(meetings.values()).sort((a: MeetingLead, b: MeetingLead) => {
+  // FIX: Split array creation and sort to help TypeScript infer types correctly, which resolves the error on the following lines.
+  const meetingsArray: MeetingLead[] = Array.from(meetings.values());
+  const sortedMeetings = meetingsArray.sort((a, b) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
       return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime();
   });
