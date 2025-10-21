@@ -11,6 +11,7 @@ declare global {
       readonly VITE_EVENT_CODE: string;
       readonly VITE_EVENT_DATES?: string;
       readonly VITE_WHATSAPP?: string;
+      readonly VITE_GEMINI_API_KEY?: string;
     };
   }
 }
