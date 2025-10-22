@@ -265,7 +265,7 @@ const Meetings: React.FC = () => {
                     <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Meeting Scheduler</h1>
                     <p className="text-gray-500 dark:text-gray-400 mt-2">Book 15-minute slots for the event.</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-center">
                     <div className="flex items-center bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-1">
                         {eventDays.map(day => (
                             <button

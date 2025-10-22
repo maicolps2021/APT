@@ -14,6 +14,8 @@ import {
   Sun,
   Settings,
   HelpCircle,
+  Menu,
+  X,
 } from "lucide-react";
 
 interface DashboardLayoutProps {
@@ -34,6 +36,8 @@ const navItems = [
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const [isDark, setIsDark] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   useEffect(() => {
     if (isDark) {
       document.documentElement.classList.add('dark');
@@ -45,18 +49,31 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   return (
     <div className={`flex min-h-screen w-full ${isDark ? 'dark' : ''}`}>
       <div className="flex w-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
-        <Sidebar />
-        <ContentArea isDark={isDark} setIsDark={setIsDark}>
-            {children}
-        </ContentArea>
+        <Sidebar mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+        <div className="flex-1 flex flex-col w-full">
+            <MobileHeader onMenuClick={() => setMobileMenuOpen(true)} isDark={isDark} setIsDark={setIsDark}/>
+            <ContentArea>
+                {children}
+            </ContentArea>
+        </div>
       </div>
     </div>
   );
 };
 
-const Sidebar = () => {
+interface SidebarProps {
+    mobileMenuOpen: boolean;
+    setMobileMenuOpen: (open: boolean) => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ mobileMenuOpen, setMobileMenuOpen }) => {
   const [open, setOpen] = useState(true);
   const [selected, setSelected] = useState(window.location.hash || "#/");
+
+  const handleSelect = (href: string) => {
+    setSelected(href);
+    setMobileMenuOpen(false); // Close mobile menu on navigation
+  };
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -67,36 +84,47 @@ const Sidebar = () => {
   }, []);
 
   return (
-    <nav
-      className={`sticky top-0 h-screen shrink-0 border-r transition-all duration-300 ease-in-out ${
-        open ? 'w-64' : 'w-16'
-      } border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 shadow-sm`}
-    >
-      <TitleSection open={open} />
-      <div className="space-y-1 mb-8">
-        {navItems.map(item => (
-            <Option 
-                key={item.title}
-                Icon={item.Icon}
-                title={item.title}
-                href={item.href}
-                selected={selected}
-                setSelected={setSelected}
-                open={open}
-            />
-        ))}
-      </div>
-      {open && (
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-4 space-y-1">
-          <div className="px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-            Account
-          </div>
-          <Option Icon={Settings} title="Settings" href="#/settings" selected={selected} setSelected={setSelected} open={open} />
-          <Option Icon={HelpCircle} title="Help" href="#/help" selected={selected} setSelected={setSelected} open={open} />
-        </div>
+    <>
+      {/* Backdrop for mobile */}
+      {mobileMenuOpen && (
+          <div 
+              className="fixed inset-0 bg-black/60 z-40 md:hidden"
+              onClick={() => setMobileMenuOpen(false)}
+          />
       )}
-      <ToggleClose open={open} setOpen={setOpen} />
-    </nav>
+      <nav
+        className={`fixed md:sticky top-0 h-screen shrink-0 border-r bg-white dark:bg-gray-900 shadow-sm md:shadow-none transition-all duration-300 ease-in-out z-50
+        ${open ? 'w-64' : 'w-16'}
+        md:flex md:flex-col
+        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        border-gray-200 dark:border-gray-800 p-2`}
+      >
+        <TitleSection open={open} />
+        <div className="space-y-1 mb-8">
+          {navItems.map(item => (
+              <Option 
+                  key={item.title}
+                  Icon={item.Icon}
+                  title={item.title}
+                  href={item.href}
+                  selected={selected}
+                  setSelected={handleSelect}
+                  open={open}
+              />
+          ))}
+        </div>
+        {open && (
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-4 space-y-1">
+            <div className="px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+              Account
+            </div>
+            <Option Icon={Settings} title="Settings" href="#/settings" selected={selected} setSelected={handleSelect} open={open} />
+            <Option Icon={HelpCircle} title="Help" href="#/help" selected={selected} setSelected={handleSelect} open={open} />
+          </div>
+        )}
+        <ToggleClose open={open} setOpen={setOpen} />
+      </nav>
+    </>
   );
 };
 
@@ -191,7 +219,7 @@ const ToggleClose = ({ open, setOpen }: {open: boolean, setOpen: (open: boolean)
   return (
     <button
       onClick={() => setOpen(!open)}
-      className="absolute bottom-0 left-0 right-0 border-t border-gray-200 dark:border-gray-800 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
+      className="absolute bottom-0 left-0 right-0 border-t border-gray-200 dark:border-gray-800 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 hidden md:block" // Hide on mobile
     >
       <div className="flex items-center p-3">
         <div className="grid size-10 place-content-center">
@@ -215,17 +243,32 @@ const ToggleClose = ({ open, setOpen }: {open: boolean, setOpen: (open: boolean)
   );
 };
 
-const ContentArea: React.FC<{isDark: boolean, setIsDark: (isDark: boolean) => void, children: ReactNode}> = ({ isDark, setIsDark, children }) => {
+interface MobileHeaderProps {
+  onMenuClick: () => void;
+  isDark: boolean;
+  setIsDark: (isDark: boolean) => void;
+}
+
+const MobileHeader: React.FC<MobileHeaderProps> = ({ onMenuClick, isDark, setIsDark }) => (
+    <header className="md:hidden flex items-center justify-between p-2 border-b bg-white dark:bg-gray-900 sticky top-0 z-10 dark:border-gray-800">
+        <button onClick={onMenuClick} className="p-2">
+            <Menu className="h-6 w-6 text-gray-600 dark:text-gray-300" />
+        </button>
+        <div className="flex items-center gap-2">
+            <Logo />
+        </div>
+        <button
+            onClick={() => setIsDark(!isDark)}
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 dark:text-gray-400"
+        >
+            {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </button>
+    </header>
+);
+
+const ContentArea: React.FC<{children: ReactNode}> = ({ children }) => {
   return (
     <div className="flex-1 bg-gray-50 dark:bg-gray-950 p-4 md:p-6 overflow-auto">
-      <div className="flex items-center justify-end gap-4 mb-4">
-          <button
-            onClick={() => setIsDark(!isDark)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-          >
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
-      </div>
       <main className="container mx-auto">
         {children}
       </main>

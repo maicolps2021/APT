@@ -131,7 +131,7 @@ const RafflePanel: React.FC<RafflePanelProps> = ({ onRaffleDrawn }) => {
                     className="w-full bg-gray-200 dark:bg-gray-900 rounded-md p-2 text-sm text-gray-700 dark:text-gray-300 h-24 border border-gray-300 dark:border-gray-600"
                     value={getWinnerMessage()}
                 />
-                <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
                     <button onClick={handleCopyToClipboard} className="w-full rounded-lg bg-gray-600 py-2 text-sm font-semibold text-white hover:bg-gray-500 transition-all">
                         {copied ? 'Copiado' : 'Copiar Mensaje WA'}
                     </button>

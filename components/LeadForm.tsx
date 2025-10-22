@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { EVENT_CODE, ORG_UUID } from "../lib/config";
@@ -147,12 +148,12 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
     <>
       <h2 className="text-2xl font-semibold mb-5 text-gray-900 dark:text-white">Formulario de Registro Rápido</h2>
       <form onSubmit={onSubmit} ref={formRef} className="space-y-4 text-gray-800 dark:text-gray-200">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <input name="name" placeholder="Nombre y Apellido" required className="input" />
           <input name="company" placeholder="Empresa" className="input" />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <select name="role" className="input" defaultValue="">
             <option value="" disabled>Canal (Guía/Agencia/Hotel/Mayorista)</option>
             <option>Guia</option><option>Agencia</option><option>Hotel</option><option>Mayorista</option><option>Otro</option>
@@ -163,7 +164,7 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <input name="whatsapp" placeholder="WhatsApp (+506…)" className="input" />
           <input type="email" name="email" placeholder="Email" className="input" />
         </div>
