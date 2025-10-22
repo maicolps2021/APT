@@ -50,8 +50,9 @@ const App: React.FC = () => {
     }
   };
   
-  if (route === '#/tv') {
-    return <TV />;
+  // Render TV and Capture pages in full-screen "kiosk" mode without the dashboard layout
+  if (route === '#/tv' || route === '#/capture') {
+    return renderPage();
   }
 
   return (

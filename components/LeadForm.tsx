@@ -1,7 +1,9 @@
+
 import React, { useState, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { EVENT_CODE, ORG_UUID } from "../lib/config";
 import type { Lead } from '../types';
+import { List, Calendar, PlusCircle, RotateCcw } from 'lucide-react';
 
 const mapDay = () => {
   const d = new Date().getDate();
@@ -10,32 +12,44 @@ const mapDay = () => {
 
 const availableTags = ['transfer-first', 'guide-pro', 'hotel-train'];
 
-export function LeadForm() {
+interface LeadFormProps {
+    onSuccess: (lead: Lead) => void;
+    onReset: () => void;
+    successLead: Lead | null;
+}
+
+export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
   const [loading, setLoading] = useState(false);
-  const [ok, setOk] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<Lead | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
 
+  const handleResetForm = () => {
+    if (formRef.current) formRef.current.reset();
+    setTags([]);
+    setLoading(false);
+    setErr(null);
+    setDuplicate(null);
+    onReset();
+  };
+
   const createLead = async (payload: Partial<Lead>) => {
     setLoading(true);
     setErr(null);
-    setOk(false);
   
     const { error } = await supabase.from("leads").insert([payload]);
     if (error) {
       setErr(error.message);
+      setLoading(false);
     } else {
-      setOk(true);
-      if (formRef.current) formRef.current.reset();
-      setTags([]);
-      setDuplicate(null);
+      // Pass a simplified lead object to the success state
+      onSuccess(payload as Lead);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const buildPayloadFromForm = (notes?: string) => {
+  const buildPayloadFromForm = () => {
     if (!formRef.current) return null;
     const f = new FormData(formRef.current);
     const slot: 'AM' | 'PM' = new Date().getHours() < 13 ? "AM" : "PM";
@@ -61,7 +75,7 @@ export function LeadForm() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setLoading(true); setErr(null); setOk(false); setDuplicate(null);
+    setLoading(true); setErr(null); setDuplicate(null);
 
     const f = new FormData(e.currentTarget);
     const whatsapp = (f.get("whatsapp") as string || "").replace(/\s+/g, "");
@@ -95,7 +109,7 @@ export function LeadForm() {
   }
 
   const handleCreateAnyway = async () => {
-    const payload = buildPayloadFromForm('posible duplicado');
+    const payload = buildPayloadFromForm();
     if (payload) await createLead(payload);
   };
 
@@ -105,8 +119,44 @@ export function LeadForm() {
     );
   };
 
+  if (successLead) {
+    return (
+        <div className="flex flex-col items-center justify-center text-center h-full animate-fade-in">
+            <div className="bg-green-100 dark:bg-green-900/50 rounded-full p-4 mb-4">
+                <svg className="w-12 h-12 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">¡Éxito!</h2>
+            <p className="text-gray-600 dark:text-gray-300 mt-2 max-w-sm">
+                El lead <span className="font-semibold">{successLead.name}</span> de <span className="font-semibold">{successLead.company}</span> ha sido guardado.
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">¿Cuál es el siguiente paso?</p>
+            
+            <div className="mt-8 w-full space-y-3">
+                <button 
+                    onClick={handleResetForm}
+                    className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                >
+                    <PlusCircle size={18} />
+                    Capturar Otro Lead
+                </button>
+                <a href="#/leads" className="w-full block rounded-lg bg-gray-200 dark:bg-gray-700 py-3 font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2">
+                    <List size={18} />
+                    Ver Lista de Leads
+                </a>
+                 <a href="#/meetings" className="w-full block rounded-lg bg-gray-200 dark:bg-gray-700 py-3 font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2">
+                    <Calendar size={18} />
+                    Agendar Reunión
+                </a>
+            </div>
+        </div>
+    );
+  }
+
   return (
     <>
+      <h2 className="text-2xl font-semibold mb-5 text-gray-900 dark:text-white">Formulario de Registro Rápido</h2>
       <form onSubmit={onSubmit} ref={formRef} className="space-y-4 text-gray-800 dark:text-gray-200">
         <div className="grid grid-cols-2 gap-4">
           <input name="name" placeholder="Nombre y Apellido" required className="input" />
@@ -130,6 +180,7 @@ export function LeadForm() {
         </div>
         
         <div>
+           <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Etiquetas rápidas:</p>
           <div className="flex flex-wrap gap-2">
             {availableTags.map(tag => (
               <button
@@ -148,11 +199,20 @@ export function LeadForm() {
           </div>
         </div>
                 
-        <button disabled={loading || !!duplicate} className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-all mt-2">
-          {loading ? "Verificando…" : "Guardar lead"}
-        </button>
+        <div className="flex items-center gap-3 pt-4">
+            <button 
+                type="button" 
+                onClick={handleResetForm}
+                className="w-auto flex-shrink-0 rounded-lg bg-gray-200 dark:bg-gray-700 px-4 py-3 font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
+                title="Clear form"
+            >
+                <RotateCcw size={18} />
+            </button>
+            <button disabled={loading || !!duplicate} className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-all">
+                {loading ? "Verificando…" : "Guardar lead"}
+            </button>
+        </div>
 
-        {ok && <p className="text-green-600 dark:text-green-400 text-sm text-center">¡Lead guardado! Te contactamos en ≤2 horas.</p>}
         {err && <p className="text-red-500 dark:text-red-400 text-sm text-center">{err}</p>}
       </form>
       {duplicate && (
