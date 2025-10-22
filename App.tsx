@@ -9,6 +9,7 @@ import Meetings from './pages/Meetings';
 import Raffles from './pages/Raffles';
 import Materials from './pages/Materials';
 import LeadList from './pages/LeadList';
+import Settings from './pages/Settings';
 import DashboardLayout from './components/DashboardLayout';
 
 const App: React.FC = () => {
@@ -43,6 +44,8 @@ const App: React.FC = () => {
         return <Materials />;
       case '#/leads':
         return <LeadList />;
+      case '#/settings':
+        return <Settings />;
       case '#/':
       case '':
       default:
