@@ -222,14 +222,12 @@ const Meetings: React.FC = () => {
 
         setMeetings(prev => [...prev.filter(m => m.id !== leadId), optimisticMeeting]);
 
-        const { data, error } = await supabase
+        const { error } = await supabase
             .from('leads')
             .update({ meeting_at: meetingISO, owner: owner, next_step: 'Reunion' })
-            .eq('id', leadId)
-            .select('id')
-            .single();
+            .eq('id', leadId);
         
-        if (error || !data) {
+        if (error) {
             console.error('Failed to schedule:', error);
             alert('Error: Could not save the meeting. The change has been reverted. Please check permissions (RLS) and try again.');
             setMeetings(prev => prev.filter(m => m.id !== leadId));
@@ -244,14 +242,12 @@ const Meetings: React.FC = () => {
 
         setMeetings(prev => prev.filter(m => m.id !== leadId));
 
-        const { data, error } = await supabase
+        const { error } = await supabase
             .from('leads')
             .update({ meeting_at: null, owner: null })
-            .eq('id', leadId)
-            .select('id')
-            .single();
+            .eq('id', leadId);
         
-        if (error || !data) {
+        if (error) {
             console.error('Failed to cancel:', error);
             alert('Error: Could not cancel the meeting. The change has been reverted.');
             setMeetings(prev => [...prev, originalMeeting]);
