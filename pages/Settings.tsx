@@ -92,20 +92,43 @@ const Settings: React.FC = () => {
             const playlistObject = { items: playlistItems };
             const playlistString = JSON.stringify(playlistObject, null, 2);
             const playlistBlob = new Blob([playlistString], { type: 'application/json' });
+            const filePath = `${TV_PREFIX}/playlist.json`;
 
-            const { error: uploadError } = await supabase.storage
+            // Attempt to update the file first. This is a workaround for RLS policies
+            // that might allow updates but not inserts, which can cause 'upsert:true' to fail.
+            const { error: updateError } = await supabase.storage
                 .from(TV_BUCKET)
-                .upload(`${TV_PREFIX}/playlist.json`, playlistBlob, {
+                .update(filePath, playlistBlob, {
                     cacheControl: '3600',
-                    upsert: true,
+                    upsert: false, // Ensure this is an update-only operation
                 });
 
-            if (uploadError) throw uploadError;
+            if (updateError) {
+                // If the file was not found, it means we need to create it.
+                // The error message for not found is "The resource was not found".
+                if (updateError.message.toLowerCase().includes('not found')) {
+                     const { error: uploadError } = await supabase.storage
+                        .from(TV_BUCKET)
+                        .upload(filePath, playlistBlob, {
+                            cacheControl: '3600',
+                            upsert: false, // This is an insert-only operation
+                        });
+                    
+                    if (uploadError) {
+                        // This will likely throw the original RLS error if insert policy is missing
+                        throw uploadError;
+                    }
+                } else {
+                     // A different error occurred during update (like an RLS violation on update)
+                    throw updateError;
+                }
+            }
+            
             alert("Playlist saved successfully!");
 
         } catch (err: any) {
             console.error("Error saving playlist:", err);
-            setError("Failed to save playlist.json. Check console for details.");
+            setError(`Failed to save playlist.json. Error: ${err.message}. This is likely due to a missing Storage Row Level Security (RLS) policy in your Supabase project. Please ensure policies exist to allow 'insert' and 'update' operations on the '${TV_BUCKET}' bucket.`);
         } finally {
             setSaving(false);
         }
@@ -116,7 +139,7 @@ const Settings: React.FC = () => {
     };
 
     const handleDrop = (targetIndex: number) => {
-        if (draggedItemIndex === null) return;
+        if (draggedItemIndex === null || draggedItemIndex === targetIndex) return;
         const newItems = [...playlistItems];
         const [movedItem] = newItems.splice(draggedItemIndex, 1);
         newItems.splice(targetIndex, 0, movedItem);
@@ -152,19 +175,21 @@ const Settings: React.FC = () => {
             <Card>
                 <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">TV Playlist Manager</h2>
                  {loading && <p className="text-center text-gray-500 dark:text-gray-400 p-8">Loading playlist...</p>}
-                 {error && <p className="text-center text-red-500 p-8">{error}</p>}
+                 {error && <p className="text-center text-red-500 p-4 rounded-lg bg-red-50 dark:bg-red-900/20">{error}</p>}
                  {!loading && !error && (
                      <div className="space-y-3">
-                        {playlistItems.map((item, index) => (
+                        {playlistItems.length > 0 ? playlistItems.map((item, index) => (
                              <div 
-                                key={item.src} 
-                                className="grid grid-cols-12 gap-3 items-center bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700"
+                                key={`${item.src}-${index}`} 
+                                className={`grid grid-cols-12 gap-3 items-center bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700 transition-opacity ${draggedItemIndex === index ? 'opacity-50' : ''}`}
                                 draggable
                                 onDragStart={() => handleDragStart(index)}
+                                onDragEnter={(e) => { e.preventDefault(); if (draggedItemIndex !== null) handleDrop(index); }}
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={() => handleDrop(index)}
+                                onDragEnd={() => setDraggedItemIndex(null)}
                              >
-                                <div className="col-span-1 flex justify-center items-center cursor-move text-gray-400 hover:text-gray-600">
+                                <div className="col-span-1 flex justify-center items-center cursor-move text-gray-400 hover:text-gray-600" title="Drag to reorder">
                                     <GripVertical />
                                 </div>
                                 <div className="col-span-11 md:col-span-4">
@@ -193,11 +218,10 @@ const Settings: React.FC = () => {
                                     </label>
                                 </div>
                              </div>
-                        ))}
+                        )) : (
+                            <p className="text-center text-gray-500 dark:text-gray-400 py-8">No media files found in '{TV_BUCKET}/{TV_PREFIX}'. Upload videos or images to manage the playlist.</p>
+                        )}
                      </div>
-                 )}
-                 {!loading && playlistItems.length === 0 && (
-                    <p className="text-center text-gray-500 dark:text-gray-400 py-8">No media files found in '{TV_BUCKET}/{TV_PREFIX}'. Upload videos or images to manage the playlist.</p>
                  )}
             </Card>
         </div>
