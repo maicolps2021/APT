@@ -59,7 +59,10 @@ const MC: React.FC = () => {
 
       if (error) throw error;
       
-      const toldIds = new Set(data.map((log: any) => log.mention_id));
+      // Fix: Correctly typed the 'log' object from Supabase data.
+      // This ensures that `data.map` returns a `string[]`, allowing `new Set` to infer the
+      // correct `Set<string>` type, which matches the state's type definition.
+      const toldIds = new Set(data.map((log: { mention_id: string }) => log.mention_id));
       setToldMentions(toldIds);
     } catch (err: any) {
         console.error('Error fetching mention logs:', err);

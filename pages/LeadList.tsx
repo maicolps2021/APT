@@ -6,7 +6,7 @@ import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Lead } from '../types';
 import Card from '../components/Card';
 import { generateWhatsAppLink, generateEmailLink } from '../lib/templates';
-import { RefreshCw, Info, Mail, Send, LoaderCircle, CheckCircle, XCircle } from 'lucide-react';
+import { RefreshCw, Info, Mail, Send, LoaderCircle, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 import { hasBuilderBot, sendBuilderBotMessage } from '../services/builderbotService';
 
 type ContactStatus = 'idle' | 'sending' | 'sent' | 'error';
@@ -17,6 +17,7 @@ const LeadList: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [contactStatus, setContactStatus] = useState<Record<string, ContactStatus>>({});
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
@@ -42,6 +43,29 @@ const LeadList: React.FC = () => {
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
+  
+  const handleDeleteLead = async (leadId: string, leadName: string) => {
+    if (!window.confirm(`¿Estás seguro de que quieres eliminar permanentemente el lead "${leadName}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+    setDeletingId(leadId);
+    setError(null);
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('id', leadId);
+
+      if (error) throw error;
+
+      setLeads(prevLeads => prevLeads.filter(lead => lead.id !== leadId));
+    } catch (err: any) {
+      console.error("Error deleting lead:", err);
+      setError("No se pudo eliminar el lead. Por favor, inténtalo de nuevo.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const filteredLeads = useMemo(() => {
     if (!searchTerm) return leads;
@@ -98,6 +122,18 @@ const LeadList: React.FC = () => {
             <Mail className="h-5 w-5" />
         </a>
         )}
+        <button
+          onClick={() => handleDeleteLead(lead.id, lead.name)}
+          disabled={deletingId === lead.id}
+          title="Delete Lead"
+          className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {deletingId === lead.id ? (
+            <LoaderCircle className="h-5 w-5 animate-spin" />
+          ) : (
+            <Trash2 className="h-5 w-5" />
+          )}
+        </button>
     </div>
   );
 
