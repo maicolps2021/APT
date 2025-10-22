@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { EVENT_CODE, ORG_UUID, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
 import { getDayRange } from '../lib/utils';
-import { X, Calendar as CalendarIcon, Clock, User, Check, Search, RefreshCw } from 'lucide-react';
+import { X, Calendar as CalendarIcon, Clock, User, Check, Search, RefreshCw, Plus } from 'lucide-react';
 
 type MeetingLead = Pick<Lead, 'id' | 'name' | 'company' | 'owner' | 'meeting_at'>;
 
@@ -21,11 +21,11 @@ const generateTimeSlots = () => {
   return slots;
 };
 
-const TimeSlot: React.FC<{
+const TimeSlotCard: React.FC<{
   time: string;
   meeting: MeetingLead | undefined;
   unscheduledLeads: Lead[];
-  onSchedule: (leadId: string, owner: string, time: string) => Promise<void>;
+  onSchedule: (leadId: string, owner: string, time: string) => Promise<boolean>;
   onCancel: (leadId: string) => Promise<void>;
 }> = ({ time, meeting, unscheduledLeads, onSchedule, onCancel }) => {
   const [isScheduling, setIsScheduling] = useState(false);
@@ -50,9 +50,11 @@ const TimeSlot: React.FC<{
   const handleConfirmSchedule = async () => {
     if (!selectedLead || !owner) return;
     setIsSaving(true);
-    await onSchedule(selectedLead.id, owner, time);
+    const success = await onSchedule(selectedLead.id, owner, time);
     setIsSaving(false);
-    resetState();
+    if (success) {
+      resetState();
+    }
   };
 
   const handleCancelMeeting = async () => {
@@ -67,26 +69,31 @@ const TimeSlot: React.FC<{
     setSelectedLead(null);
     setOwner('');
   };
+  
+  const cardBaseClasses = "w-full text-left p-2 rounded-lg transition-all duration-200 min-h-[72px] flex flex-col justify-center";
 
   if (meeting) {
     return (
-      <div className="flex items-center justify-between w-full text-left bg-blue-50 dark:bg-blue-900/50 p-2 rounded-lg border-l-4 border-blue-500">
-        <div>
-          <p className="font-bold text-sm text-blue-800 dark:text-blue-200">{meeting.name}</p>
-          <p className="text-xs text-blue-600 dark:text-blue-400">{meeting.owner}</p>
+      <div className={`${cardBaseClasses} bg-blue-600 text-white shadow-md`}>
+        <div className="flex items-start justify-between">
+            <div>
+                <p className="font-bold text-sm">{meeting.name}</p>
+                <p className="text-xs text-blue-200">{meeting.company}</p>
+                <p className="text-xs text-blue-200 mt-1 flex items-center gap-1"><User size={10}/> {meeting.owner}</p>
+            </div>
+            <button onClick={handleCancelMeeting} className="p-1 text-blue-200 hover:text-white rounded-full hover:bg-white/20">
+              <X size={14} />
+            </button>
         </div>
-        <button onClick={handleCancelMeeting} className="p-1 text-blue-500 hover:text-red-500 dark:hover:text-red-400 rounded-full hover:bg-red-100 dark:hover:bg-red-900/50">
-          <X size={14} />
-        </button>
       </div>
     );
   }
 
   if (isScheduling) {
     return (
-      <div className="relative w-full bg-gray-50 dark:bg-gray-800/50 p-2 rounded-lg">
+      <div className={`${cardBaseClasses} bg-white dark:bg-gray-800 shadow-lg border border-gray-300 dark:border-gray-700`}>
         {selectedLead ? (
-          <div className="space-y-2">
+          <div className="space-y-2 animate-fade-in-fast">
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{selectedLead.name}</p>
             <input
               type="text"
@@ -103,7 +110,7 @@ const TimeSlot: React.FC<{
             </div>
           </div>
         ) : (
-          <div className="relative">
+          <div className="relative animate-fade-in-fast">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
@@ -132,9 +139,9 @@ const TimeSlot: React.FC<{
   return (
     <button
       onClick={() => setIsScheduling(true)}
-      className="w-full h-10 text-left px-2 text-gray-400 dark:text-gray-600 border border-transparent hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-all"
+      className={`${cardBaseClasses} items-center bg-gray-50 dark:bg-gray-800/50 border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-gray-400 dark:text-gray-600 hover:text-blue-500 dark:hover:text-blue-400`}
     >
-      +
+      <Plus size={20} />
     </button>
   );
 };
@@ -199,48 +206,55 @@ const Meetings: React.FC = () => {
         return leads.filter(l => !scheduledIds.has(l.id));
     }, [leads, meetings]);
 
-    const handleSchedule = async (leadId: string, owner: string, time: string) => {
+    const handleSchedule = async (leadId: string, owner: string, time: string): Promise<boolean> => {
         const [hour, minute] = time.split(':').map(Number);
         const meetingDate = new Date(selectedDate);
         meetingDate.setUTCHours(hour, minute, 0, 0);
+        const meetingISO = meetingDate.toISOString();
 
         const optimisticMeeting: MeetingLead = {
             id: leadId,
             name: leads.find(l => l.id === leadId)?.name || 'Unknown',
             company: leads.find(l => l.id === leadId)?.company,
             owner: owner,
-            meeting_at: meetingDate.toISOString(),
+            meeting_at: meetingISO,
         };
 
         setMeetings(prev => [...prev.filter(m => m.id !== leadId), optimisticMeeting]);
 
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('leads')
-            .update({ meeting_at: meetingDate.toISOString(), owner: owner, next_step: 'Reunion' })
-            .eq('id', leadId);
+            .update({ meeting_at: meetingISO, owner: owner, next_step: 'Reunion' })
+            .eq('id', leadId)
+            .select('id')
+            .single();
         
-        if (error) {
+        if (error || !data) {
             console.error('Failed to schedule:', error);
-            alert('Error: Could not save the meeting.');
+            alert('Error: Could not save the meeting. The change has been reverted. Please check permissions (RLS) and try again.');
             setMeetings(prev => prev.filter(m => m.id !== leadId));
+            return false;
         }
+        return true;
     };
     
     const handleCancel = async (leadId: string) => {
         const originalMeeting = meetings.find(m => m.id === leadId);
+        if (!originalMeeting) return;
+
         setMeetings(prev => prev.filter(m => m.id !== leadId));
 
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('leads')
             .update({ meeting_at: null, owner: null })
-            .eq('id', leadId);
+            .eq('id', leadId)
+            .select('id')
+            .single();
         
-        if (error) {
+        if (error || !data) {
             console.error('Failed to cancel:', error);
-            alert('Error: Could not cancel the meeting.');
-            if (originalMeeting) {
-                setMeetings(prev => [...prev, originalMeeting]);
-            }
+            alert('Error: Could not cancel the meeting. The change has been reverted.');
+            setMeetings(prev => [...prev, originalMeeting]);
         }
     };
     
@@ -286,22 +300,22 @@ const Meetings: React.FC = () => {
                     <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
                         <div>
                             <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-3 text-center md:text-left">AM</h2>
-                            <div className="space-y-1">
+                            <div className="space-y-2">
                                 {timeSlots.filter(t => parseInt(t.split(':')[0]) < 12).map(time => (
-                                    <div key={time} className="flex items-center gap-2">
+                                    <div key={time} className="flex items-center gap-3">
                                         <span className="w-12 text-right text-sm text-gray-500 dark:text-gray-400">{time}</span>
-                                        <TimeSlot time={time} meeting={meetingsByTime[time]} unscheduledLeads={unscheduledLeads} onSchedule={handleSchedule} onCancel={handleCancel} />
+                                        <TimeSlotCard time={time} meeting={meetingsByTime[time]} unscheduledLeads={unscheduledLeads} onSchedule={handleSchedule} onCancel={handleCancel} />
                                     </div>
                                 ))}
                             </div>
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-3 text-center md:text-left">PM</h2>
-                            <div className="space-y-1">
+                            <div className="space-y-2">
                                 {timeSlots.filter(t => parseInt(t.split(':')[0]) >= 12).map(time => (
-                                    <div key={time} className="flex items-center gap-2">
+                                    <div key={time} className="flex items-center gap-3">
                                         <span className="w-12 text-right text-sm text-gray-500 dark:text-gray-400">{time}</span>
-                                        <TimeSlot time={time} meeting={meetingsByTime[time]} unscheduledLeads={unscheduledLeads} onSchedule={handleSchedule} onCancel={handleCancel} />
+                                        <TimeSlotCard time={time} meeting={meetingsByTime[time]} unscheduledLeads={unscheduledLeads} onSchedule={handleSchedule} onCancel={handleCancel} />
                                     </div>
                                 ))}
                             </div>
@@ -338,6 +352,15 @@ const Meetings: React.FC = () => {
                     </div>
                 </div>
              }
+             <style>{`
+                @keyframes fade-in-fast {
+                  0% { opacity: 0; }
+                  100% { opacity: 1; }
+                }
+                .animate-fade-in-fast {
+                  animation: fade-in-fast 0.2s ease-out forwards;
+                }
+             `}</style>
         </div>
     );
 };
