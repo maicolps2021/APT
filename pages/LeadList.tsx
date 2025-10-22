@@ -1,18 +1,22 @@
 
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Lead } from '../types';
 import Card from '../components/Card';
 import { generateWhatsAppLink, generateEmailLink } from '../lib/templates';
-import { RefreshCw, Info, MessageSquare, Mail } from 'lucide-react';
+import { RefreshCw, Info, MessageSquare, Mail, Send, LoaderCircle, CheckCircle, XCircle } from 'lucide-react';
+import { hasBuilderBot, sendBuilderBotMessage } from '../services/builderbotService';
 
+type ContactStatus = 'idle' | 'sending' | 'sent' | 'error';
 
 const LeadList: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [contactStatus, setContactStatus] = useState<Record<string, ContactStatus>>({});
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
@@ -46,6 +50,40 @@ const LeadList: React.FC = () => {
       lead.company?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [leads, searchTerm]);
+
+  const handleSendBuilderBot = async (lead: Lead) => {
+    setContactStatus(prev => ({ ...prev, [lead.id]: 'sending' }));
+    try {
+      const message = generateWhatsAppLink(lead, true); // Get only the message text
+      await sendBuilderBotMessage(lead.whatsapp!, message);
+      setContactStatus(prev => ({ ...prev, [lead.id]: 'sent' }));
+    } catch (err) {
+      console.error("Failed to send message via BuilderBot", err);
+      setContactStatus(prev => ({ ...prev, [lead.id]: 'error' }));
+    } finally {
+        setTimeout(() => {
+            setContactStatus(prev => ({ ...prev, [lead.id]: 'idle' }));
+        }, 3000);
+    }
+  };
+
+  const getActionIcon = (lead: Lead) => {
+    const status = contactStatus[lead.id] || 'idle';
+    switch (status) {
+        case 'sending':
+            return <LoaderCircle className="h-5 w-5 text-gray-400 animate-spin" />;
+        case 'sent':
+            return <CheckCircle className="h-5 w-5 text-green-500" />;
+        case 'error':
+            return <XCircle className="h-5 w-5 text-red-500" />;
+        default:
+            return (
+                <button onClick={() => handleSendBuilderBot(lead)} title="Send via BuilderBot" className="text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
+                    <Send className="h-5 w-5" />
+                </button>
+            );
+    }
+  };
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -127,6 +165,7 @@ const LeadList: React.FC = () => {
                               <MessageSquare className="h-5 w-5" />
                             </a>
                            )}
+                           {hasBuilderBot() && lead.whatsapp && getActionIcon(lead)}
                            {lead.email && (
                             <a href={generateEmailLink(lead)} target="_blank" rel="noopener noreferrer" title="Send Email Template" className="text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
                               <Mail className="h-5 w-5" />

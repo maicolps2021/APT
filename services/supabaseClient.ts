@@ -13,6 +13,8 @@ declare global {
       readonly VITE_WHATSAPP?: string;
       readonly VITE_TV_BUCKET?: string;
       readonly VITE_TV_PREFIX?: string;
+      readonly VITE_BUILDERBOT_API_KEY?: string;
+      readonly VITE_BUILDERBOT_ID?: string;
     };
   }
 }

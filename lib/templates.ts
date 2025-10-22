@@ -1,18 +1,26 @@
 
 
+
 import type { Lead } from '../types';
 
 /**
- * Generates a pre-filled WhatsApp message link for a given lead.
+ * Generates a pre-filled WhatsApp message link or just the message text for a given lead.
  * @param lead The lead object containing contact details.
- * @returns A string URL for a wa.me link.
+ * @param textOnly If true, returns only the message string.
+ * @returns A string URL for a wa.me link or the message text.
  */
-export const generateWhatsAppLink = (lead: Lead): string => {
+export const generateWhatsAppLink = (lead: Lead, textOnly = false): string => {
     const name = lead.name.split(' ')[0]; // Use first name for a personal touch
-    const message = encodeURIComponent(`¡Hola ${name}! Gracias por visitarnos en el stand de Arenal Private Tours by Small Groups. En breve te enviaremos la información de colaborador a tu correo. ¡Saludos!`);
+    const message = `¡Hola ${name}! Gracias por visitarnos en el stand de Arenal Private Tours by Small Groups. En breve te enviaremos la información de colaborador a tu correo. ¡Saludos!`;
+    
+    if (textOnly) {
+        return message;
+    }
+
+    const encodedMessage = encodeURIComponent(message);
     const phone = (lead.whatsapp || '').replace(/\D/g, "");
     if (!phone) return '#';
-    return `https://wa.me/${phone}?text=${message}`;
+    return `https://wa.me/${phone}?text=${encodedMessage}`;
 };
 
 /**

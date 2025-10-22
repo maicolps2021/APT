@@ -8,3 +8,5 @@ export const EVENT_DATES = import.meta.env.VITE_EVENT_DATES ?? '2025-10-27,2025-
 export const WHATSAPP = import.meta.env.VITE_WHATSAPP ?? '+50663520923';
 export const TV_BUCKET = import.meta.env.VITE_TV_BUCKET ?? 'tv';
 export const TV_PREFIX = import.meta.env.VITE_TV_PREFIX ?? 'conagui2025';
+export const BUILDERBOT_API_KEY = import.meta.env.VITE_BUILDERBOT_API_KEY;
+export const BUILDERBOT_ID = import.meta.env.VITE_BUILDERBOT_ID;
