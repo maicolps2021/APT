@@ -10,8 +10,6 @@ const mapDay = () => {
   return d >= 27 && d <= 29 ? d : 27; // force 27 if you're out of dates
 };
 
-const availableTags = ['transfer-first', 'guide-pro', 'hotel-train'];
-
 interface LeadFormProps {
     onSuccess: (lead: Lead) => void;
     onReset: () => void;
@@ -22,12 +20,10 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<Lead | null>(null);
-  const [tags, setTags] = useState<string[]>([]);
   const formRef = useRef<HTMLFormElement>(null);
 
   const handleResetForm = () => {
     if (formRef.current) formRef.current.reset();
-    setTags([]);
     setLoading(false);
     setErr(null);
     setDuplicate(null);
@@ -69,7 +65,6 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
       interest: (f.get("interest") || undefined) as Lead['interest'],
       next_step: 'Condiciones' as const,
       scoring: "B" as const,
-      tags: tags,
     };
   };
 
@@ -111,12 +106,6 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
   const handleCreateAnyway = async () => {
     const payload = buildPayloadFromForm();
     if (payload) await createLead(payload);
-  };
-
-  const handleTagToggle = (tag: string) => {
-    setTags(prev => 
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
   };
 
   if (successLead) {
@@ -179,26 +168,6 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
           <input type="email" name="email" placeholder="Email" className="input" />
         </div>
         
-        <div>
-           <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Etiquetas rápidas:</p>
-          <div className="flex flex-wrap gap-2">
-            {availableTags.map(tag => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => handleTagToggle(tag)}
-                className={`px-3 py-1 text-sm rounded-full transition-colors ${
-                  tags.includes(tag)
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
-        </div>
-                
         <div className="flex items-center gap-3 pt-4">
             <button 
                 type="button" 

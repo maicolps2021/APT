@@ -204,7 +204,7 @@ const Meetings: React.FC = () => {
   };
   
   const meetingsArray: MeetingLead[] = Array.from(meetings.values());
-  // Fix: Explicitly type the sort callback parameters `a` and `b` as `MeetingLead` to resolve an error where they were being inferred as `unknown`.
+  // FIX: Explicitly typed the sort callback parameters `a` and `b` as `MeetingLead` to resolve an error where they were being inferred as `unknown`.
   const sortedMeetings = meetingsArray.sort((a: MeetingLead, b: MeetingLead) => {
       if (!a.meeting_at || !b.meeting_at) return 0;
       return new Date(a.meeting_at).getTime() - new Date(b.meeting_at).getTime();
