@@ -28,7 +28,7 @@ export default function Capture() {
         <div className="text-center mb-8">
           <Megaphone className="h-12 w-12 text-blue-600 dark:text-blue-400 mx-auto mb-4" />
           <h1 className="text-4xl md:text-5xl font-bold mb-2 text-gray-900 dark:text-gray-100 tracking-tight">¿Eres guía de turismo? ¡Únete a nosotros!</h1>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+          <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
             Registra tus datos para conocer beneficios exclusivos y participar por fantásticos premios.
           </p>
         </div>
