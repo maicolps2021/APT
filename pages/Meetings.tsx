@@ -1,158 +1,343 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { EVENT_CODE, ORG_UUID } from '../lib/config';
+import { EVENT_CODE, ORG_UUID, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
-import { RefreshCw, Clock, Save, UserCheck } from 'lucide-react';
+import { getDayRange } from '../lib/utils';
+import { X, Calendar as CalendarIcon, Clock, User, Check, Search, RefreshCw } from 'lucide-react';
 
-const LeadMeetingCard: React.FC<{lead: Lead, onUpdate: () => void}> = ({ lead, onUpdate }) => {
-    const [meetingTime, setMeetingTime] = useState(lead.meeting_at ? lead.meeting_at.slice(0, 16) : '');
-    const [isSaving, setIsSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+type MeetingLead = Pick<Lead, 'id' | 'name' | 'company' | 'owner' | 'meeting_at'>;
 
-    const handleSave = async () => {
-        setIsSaving(true);
-        setError(null);
-        
-        const updatePayload: Partial<Lead> = {
-            meeting_at: meetingTime ? new Date(meetingTime).toISOString() : undefined,
-        };
+const generateTimeSlots = () => {
+  const slots: string[] = [];
+  // From 8:30 AM to 4:00 PM
+  for (let hour = 8; hour <= 16; hour++) {
+    for (let minute = 0; minute < 60; minute += 15) {
+      if (hour === 8 && minute < 30) continue;
+      if (hour === 16 && minute > 0) continue;
+      const time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+      slots.push(time);
+    }
+  }
+  return slots;
+};
 
-        if (meetingTime) {
-            updatePayload.next_step = 'Reunion';
-        }
+const TimeSlot: React.FC<{
+  time: string;
+  meeting: MeetingLead | undefined;
+  unscheduledLeads: Lead[];
+  onSchedule: (leadId: string, owner: string, time: string) => Promise<void>;
+  onCancel: (leadId: string) => Promise<void>;
+}> = ({ time, meeting, unscheduledLeads, onSchedule, onCancel }) => {
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [owner, setOwner] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-        const { error } = await supabase
-            .from('leads')
-            .update(updatePayload)
-            .eq('id', lead.id);
+  const searchResults = useMemo(() => {
+    if (!searchTerm) return [];
+    return unscheduledLeads.filter(lead =>
+      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.company?.toLowerCase().includes(searchTerm.toLowerCase())
+    ).slice(0, 5);
+  }, [searchTerm, unscheduledLeads]);
 
-        if (error) {
-            console.error('Error updating meeting:', error);
-            setError('Failed to save. Please try again.');
-        } else {
-            onUpdate(); // Trigger a refresh of the list
-        }
-        setIsSaving(false);
-    };
+  const handleSelectLead = (lead: Lead) => {
+    setSelectedLead(lead);
+    setSearchTerm('');
+  };
 
+  const handleConfirmSchedule = async () => {
+    if (!selectedLead || !owner) return;
+    setIsSaving(true);
+    await onSchedule(selectedLead.id, owner, time);
+    setIsSaving(false);
+    resetState();
+  };
+
+  const handleCancelMeeting = async () => {
+      if(meeting && window.confirm(`Are you sure you want to cancel the meeting with ${meeting.name}?`)) {
+          await onCancel(meeting.id);
+      }
+  };
+
+  const resetState = () => {
+    setIsScheduling(false);
+    setSearchTerm('');
+    setSelectedLead(null);
+    setOwner('');
+  };
+
+  if (meeting) {
     return (
-        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-            <div className="flex justify-between items-start">
-                <div>
-                    <p className="font-bold text-lg text-gray-900 dark:text-white">{lead.name}</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-300">{lead.company}</p>
-                </div>
-                {lead.meeting_at && (
-                    <div className="flex items-center gap-2 text-xs font-semibold bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-2 py-1 rounded-full">
-                        <UserCheck size={14} />
-                        <span>Agendada</span>
-                    </div>
-                )}
-            </div>
-            <div className="mt-4 flex flex-col sm:flex-row items-center gap-2">
-                <div className="relative w-full">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <input
-                        type="datetime-local"
-                        value={meetingTime}
-                        onChange={(e) => setMeetingTime(e.target.value)}
-                        className="input pl-10 w-full"
-                    />
-                </div>
-                <button 
-                    onClick={handleSave} 
-                    disabled={isSaving}
-                    className="w-full sm:w-auto flex-shrink-0 flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 transition-all"
-                >
-                    <Save size={16} />
-                    {isSaving ? 'Saving...' : 'Save'}
-                </button>
-            </div>
-            {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+      <div className="flex items-center justify-between w-full text-left bg-blue-50 dark:bg-blue-900/50 p-2 rounded-lg border-l-4 border-blue-500">
+        <div>
+          <p className="font-bold text-sm text-blue-800 dark:text-blue-200">{meeting.name}</p>
+          <p className="text-xs text-blue-600 dark:text-blue-400">{meeting.owner}</p>
         </div>
+        <button onClick={handleCancelMeeting} className="p-1 text-blue-500 hover:text-red-500 dark:hover:text-red-400 rounded-full hover:bg-red-100 dark:hover:bg-red-900/50">
+          <X size={14} />
+        </button>
+      </div>
     );
+  }
+
+  if (isScheduling) {
+    return (
+      <div className="relative w-full bg-gray-50 dark:bg-gray-800/50 p-2 rounded-lg">
+        {selectedLead ? (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{selectedLead.name}</p>
+            <input
+              type="text"
+              placeholder="Meeting owner..."
+              value={owner}
+              onChange={(e) => setOwner(e.target.value)}
+              className="input text-sm py-1"
+            />
+            <div className="flex gap-2">
+              <button onClick={handleConfirmSchedule} disabled={isSaving || !owner} className="w-full text-xs rounded bg-blue-600 py-1 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500">
+                {isSaving ? 'Saving...' : 'Confirm'}
+              </button>
+              <button onClick={resetState} className="w-full text-xs rounded bg-gray-300 dark:bg-gray-600 py-1 font-semibold text-gray-800 dark:text-gray-200 hover:bg-gray-400">Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search for lead..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input text-sm py-1 pl-8"
+              autoFocus
+            />
+            {searchResults.length > 0 && (
+              <ul className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                {searchResults.map(lead => (
+                  <li key={lead.id} onClick={() => handleSelectLead(lead)} className="px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700">
+                    {lead.name} <span className="text-xs text-gray-500">{lead.company}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+             <button onClick={() => setIsScheduling(false)} className="absolute top-1/2 right-2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14}/></button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setIsScheduling(true)}
+      className="w-full h-10 text-left px-2 text-gray-400 dark:text-gray-600 border border-transparent hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-all"
+    >
+      +
+    </button>
+  );
 };
 
 
 const Meetings: React.FC = () => {
     const [leads, setLeads] = useState<Lead[]>([]);
+    const [meetings, setMeetings] = useState<MeetingLead[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchLeads = useCallback(async () => {
+    const eventDays = useMemo(() => {
+        return EVENT_DATES.split(',').map(d => new Date(d.trim()));
+    }, []);
+    const [selectedDate, setSelectedDate] = useState<Date>(eventDays[0]);
+
+    const fetchAllData = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const { data, error } = await supabase
-                .from('leads')
-                .select('*')
-                .eq('event_code', EVENT_CODE)
-                .eq('org_id', ORG_UUID)
-                .order('meeting_at', { ascending: true, nullsFirst: false })
-                .order('created_at', { ascending: false });
+            const { startISO, endISO } = getDayRange(selectedDate);
 
-            if (error) throw error;
-            setLeads(data as Lead[]);
+            const { data: leadsData, error: leadsError } = await supabase
+                .from('leads')
+                .select('id, name, company, owner, meeting_at')
+                .eq('event_code', EVENT_CODE)
+                .eq('org_id', ORG_UUID);
+
+            if (leadsError) throw leadsError;
+
+            const meetingsForDay = (leadsData as Lead[]).filter(l => 
+                l.meeting_at && l.meeting_at >= startISO && l.meeting_at < endISO
+            );
+
+            setLeads(leadsData as Lead[]);
+            setMeetings(meetingsForDay as MeetingLead[]);
         } catch (err: any) {
-            console.error("Error fetching leads for meetings:", err);
-            setError("Failed to load leads. Please try again.");
+            console.error("Error fetching data:", err);
+            setError("Failed to load schedule data. Please try again.");
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [selectedDate]);
 
     useEffect(() => {
-        fetchLeads();
-    }, [fetchLeads]);
+        fetchAllData();
+    }, [fetchAllData]);
 
-    const scheduledLeads = leads.filter(l => l.meeting_at);
-    const unscheduledLeads = leads.filter(l => !l.meeting_at);
+    const timeSlots = useMemo(() => generateTimeSlots(), []);
+    const meetingsByTime = useMemo(() => {
+        return meetings.reduce((acc, meeting) => {
+            if (meeting.meeting_at) {
+                const time = new Date(meeting.meeting_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+                acc[time] = meeting;
+            }
+            return acc;
+        }, {} as Record<string, MeetingLead>);
+    }, [meetings]);
+
+    const unscheduledLeads = useMemo(() => {
+        const scheduledIds = new Set(meetings.map(m => m.id));
+        return leads.filter(l => !scheduledIds.has(l.id));
+    }, [leads, meetings]);
+
+    const handleSchedule = async (leadId: string, owner: string, time: string) => {
+        const [hour, minute] = time.split(':').map(Number);
+        const meetingDate = new Date(selectedDate);
+        meetingDate.setUTCHours(hour, minute, 0, 0);
+
+        const optimisticMeeting: MeetingLead = {
+            id: leadId,
+            name: leads.find(l => l.id === leadId)?.name || 'Unknown',
+            company: leads.find(l => l.id === leadId)?.company,
+            owner: owner,
+            meeting_at: meetingDate.toISOString(),
+        };
+
+        setMeetings(prev => [...prev.filter(m => m.id !== leadId), optimisticMeeting]);
+
+        const { error } = await supabase
+            .from('leads')
+            .update({ meeting_at: meetingDate.toISOString(), owner: owner, next_step: 'Reunion' })
+            .eq('id', leadId);
+        
+        if (error) {
+            console.error('Failed to schedule:', error);
+            alert('Error: Could not save the meeting.');
+            setMeetings(prev => prev.filter(m => m.id !== leadId));
+        }
+    };
+    
+    const handleCancel = async (leadId: string) => {
+        const originalMeeting = meetings.find(m => m.id === leadId);
+        setMeetings(prev => prev.filter(m => m.id !== leadId));
+
+        const { error } = await supabase
+            .from('leads')
+            .update({ meeting_at: null, owner: null })
+            .eq('id', leadId);
+        
+        if (error) {
+            console.error('Failed to cancel:', error);
+            alert('Error: Could not cancel the meeting.');
+            if (originalMeeting) {
+                setMeetings(prev => [...prev, originalMeeting]);
+            }
+        }
+    };
+    
+    const sortedMeetings = useMemo(() => {
+        return [...meetings].sort((a,b) => new Date(a.meeting_at || 0).getTime() - new Date(b.meeting_at || 0).getTime())
+    }, [meetings]);
 
     return (
-        <div className="mx-auto max-w-4xl">
-            <div className="flex flex-col md:flex-row justify-between items-center mb-8">
+        <div className="mx-auto max-w-7xl">
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
                 <div className="text-center md:text-left">
                     <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Meeting Scheduler</h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-2">Schedule and manage meetings with leads.</p>
+                    <p className="text-gray-500 dark:text-gray-400 mt-2">Book 15-minute slots for the event.</p>
                 </div>
-                <button
-                    onClick={fetchLeads}
-                    disabled={loading}
-                    className="mt-4 md:mt-0 flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-2 font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:bg-gray-200 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-all"
-                >
-                    <RefreshCw className={`mr-2 h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-                    {loading ? "Refreshing..." : "Refresh"}
-                </button>
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-1">
+                        {eventDays.map(day => (
+                            <button
+                                key={day.toISOString()}
+                                onClick={() => setSelectedDate(day)}
+                                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-colors ${selectedDate.getUTCDate() === day.getUTCDate()
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    }`}
+                            >
+                                Day {day.getUTCDate()}
+                            </button>
+                        ))}
+                    </div>
+                     <button
+                        onClick={fetchAllData}
+                        disabled={loading}
+                        className="flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 p-2.5 font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                    >
+                        <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
+                </div>
             </div>
 
-            {loading && <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading leads...</div>}
-            {error && <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>}
-            
-            {!loading && !error && (
-                <div className="space-y-8">
-                    <div>
-                        <h2 className="text-2xl font-bold text-blue-600 dark:text-blue-400 mb-4 border-b-2 border-blue-500/50 pb-2">Scheduled Meetings ({scheduledLeads.length})</h2>
-                        {scheduledLeads.length > 0 ? (
-                            <div className="space-y-4">
-                                {scheduledLeads.map(lead => <LeadMeetingCard key={lead.id} lead={lead} onUpdate={fetchLeads} />)}
+             {loading ? <div className="text-center p-8">Loading schedule...</div> : error ? <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div> :
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Time Slots */}
+                    <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+                        <div>
+                            <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-3 text-center md:text-left">AM</h2>
+                            <div className="space-y-1">
+                                {timeSlots.filter(t => parseInt(t.split(':')[0]) < 12).map(time => (
+                                    <div key={time} className="flex items-center gap-2">
+                                        <span className="w-12 text-right text-sm text-gray-500 dark:text-gray-400">{time}</span>
+                                        <TimeSlot time={time} meeting={meetingsByTime[time]} unscheduledLeads={unscheduledLeads} onSchedule={handleSchedule} onCancel={handleCancel} />
+                                    </div>
+                                ))}
                             </div>
-                        ) : (
-                            <p className="text-gray-500 dark:text-gray-400">No meetings have been scheduled yet.</p>
-                        )}
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-3 text-center md:text-left">PM</h2>
+                            <div className="space-y-1">
+                                {timeSlots.filter(t => parseInt(t.split(':')[0]) >= 12).map(time => (
+                                    <div key={time} className="flex items-center gap-2">
+                                        <span className="w-12 text-right text-sm text-gray-500 dark:text-gray-400">{time}</span>
+                                        <TimeSlot time={time} meeting={meetingsByTime[time]} unscheduledLeads={unscheduledLeads} onSchedule={handleSchedule} onCancel={handleCancel} />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-600 dark:text-gray-400 mb-4 border-b-2 border-gray-500/50 pb-2">Unscheduled Leads ({unscheduledLeads.length})</h2>
-                        {unscheduledLeads.length > 0 ? (
-                            <div className="space-y-4">
-                                {unscheduledLeads.map(lead => <LeadMeetingCard key={lead.id} lead={lead} onUpdate={fetchLeads} />)}
-                            </div>
-                        ) : (
-                             <p className="text-gray-500 dark:text-gray-400">All leads have a scheduled meeting or there are no leads.</p>
-                        )}
+
+                    {/* Today's Agenda */}
+                    <div className="lg:col-span-1">
+                        <div className="bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm sticky top-6">
+                            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-1">Agenda for Day {selectedDate.getUTCDate()}</h2>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+                            {sortedMeetings.length > 0 ? (
+                                <ul className="space-y-3 max-h-[60vh] overflow-y-auto">
+                                    {sortedMeetings.map(m => (
+                                        <li key={m.id} className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                                            <p className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                                <Clock size={12} /> {m.meeting_at ? new Date(m.meeting_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : 'N/A'}
+                                            </p>
+                                            <p className="font-semibold text-gray-900 dark:text-white mt-1">{m.name}</p>
+                                            <p className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                                <User size={12} /> {m.owner}
+                                            </p>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <div className="text-center py-10">
+                                    <CalendarIcon className="mx-auto h-12 w-12 text-gray-400" />
+                                    <h3 className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">No meetings scheduled</h3>
+                                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Use the slots on the left to book appointments.</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
-            )}
+             }
         </div>
     );
 };
