@@ -26,25 +26,15 @@ export default function Capture() {
         </a>
       <div className="w-full max-w-5xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl md:text-5xl font-bold mb-2 text-gray-900 dark:text-gray-100 tracking-tight">Lead Capture Terminal</h1>
-          <p className="text-lg text-gray-600 dark:text-gray-300">Use this form for quick, on-site lead registration.</p>
+          <Megaphone className="h-12 w-12 text-blue-600 dark:text-blue-400 mx-auto mb-4" />
+          <h1 className="text-4xl md:text-5xl font-bold mb-2 text-gray-900 dark:text-gray-100 tracking-tight">¿Eres guía de turismo? ¡Únete a nosotros!</h1>
+          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+            Registra tus datos para conocer beneficios exclusivos y participar por fantásticos premios.
+          </p>
         </div>
 
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl shadow-gray-300/30 dark:shadow-black/30 w-full p-8 md:p-10 grid md:grid-cols-5 gap-10">
           <div className="md:col-span-3">
-            {!successLead && (
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 text-yellow-800 dark:text-yellow-200 p-4 rounded-r-lg mb-6 flex items-start gap-3">
-                <div>
-                  <Megaphone className="h-8 w-8 text-yellow-600 dark:text-yellow-400 mt-1 flex-shrink-0" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">¿Eres guía de turismo?</h3>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                    ¡Únete a nosotros! Registra tus datos para conocer beneficios exclusivos y participar por fantásticos premios.
-                  </p>
-                </div>
-              </div>
-            )}
              <LeadForm onSuccess={setSuccessLead} onReset={handleReset} successLead={successLead} />
           </div>
           <div className="md:col-span-2 flex flex-col items-center justify-center text-center gap-4 border-t md:border-t-0 md:border-l border-dashed border-gray-200 dark:border-gray-700 pt-8 md:pt-0 md:pl-8">
