@@ -6,7 +6,7 @@ import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Lead } from '../types';
 import Card from '../components/Card';
 import { generateWhatsAppLink, generateEmailLink } from '../lib/templates';
-import { RefreshCw, Info, MessageSquare, Mail, Send, LoaderCircle, CheckCircle, XCircle } from 'lucide-react';
+import { RefreshCw, Info, Mail, Send, LoaderCircle, CheckCircle, XCircle } from 'lucide-react';
 import { hasBuilderBot, sendBuilderBotMessage } from '../services/builderbotService';
 
 type ContactStatus = 'idle' | 'sending' | 'sent' | 'error';
@@ -91,11 +91,6 @@ const LeadList: React.FC = () => {
         <div title={lead.notes}>
             <Info className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
         </div>
-        )}
-        {lead.whatsapp && (
-        <a href={generateWhatsAppLink(lead)} target="_blank" rel="noopener noreferrer" title="Send WhatsApp Template" className="hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
-            <MessageSquare className="h-5 w-5" />
-        </a>
         )}
         {hasBuilderBot() && lead.whatsapp && getActionIcon(lead)}
         {lead.email && (
