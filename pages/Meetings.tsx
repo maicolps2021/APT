@@ -166,7 +166,7 @@ const Meetings: React.FC = () => {
 
             const { data: leadsData, error: leadsError } = await supabase
                 .from('leads')
-                .select('id, name, company, owner, meeting_at')
+                .select('id, name, company, owner, meeting_at, next_step')
                 .eq('event_code', EVENT_CODE)
                 .eq('org_id', ORG_UUID);
 
@@ -202,9 +202,8 @@ const Meetings: React.FC = () => {
     }, [meetings]);
 
     const unscheduledLeads = useMemo(() => {
-        const scheduledIds = new Set(meetings.map(m => m.id));
-        return leads.filter(l => !scheduledIds.has(l.id));
-    }, [leads, meetings]);
+        return leads.filter(l => !l.meeting_at);
+    }, [leads]);
 
     const handleSchedule = async (leadId: string, owner: string, time: string): Promise<boolean> => {
         const [hour, minute] = time.split(':').map(Number);
@@ -212,14 +211,18 @@ const Meetings: React.FC = () => {
         meetingDate.setUTCHours(hour, minute, 0, 0);
         const meetingISO = meetingDate.toISOString();
 
+        const leadToSchedule = leads.find(l => l.id === leadId);
+        if (!leadToSchedule) return false;
+
         const optimisticMeeting: MeetingLead = {
             id: leadId,
-            name: leads.find(l => l.id === leadId)?.name || 'Unknown',
-            company: leads.find(l => l.id === leadId)?.company,
+            name: leadToSchedule.name,
+            company: leadToSchedule.company,
             owner: owner,
             meeting_at: meetingISO,
         };
 
+        // Optimistically update meetings for the current day
         setMeetings(prev => [...prev.filter(m => m.id !== leadId), optimisticMeeting]);
 
         const { error } = await supabase
@@ -233,6 +236,14 @@ const Meetings: React.FC = () => {
             setMeetings(prev => prev.filter(m => m.id !== leadId));
             return false;
         }
+
+        // On success, update the master leads list to reflect the change
+        setLeads(prevLeads => prevLeads.map(lead => 
+            lead.id === leadId 
+            ? { ...lead, meeting_at: meetingISO, owner: owner } 
+            : lead
+        ));
+        
         return true;
     };
     
@@ -240,17 +251,25 @@ const Meetings: React.FC = () => {
         const originalMeeting = meetings.find(m => m.id === leadId);
         if (!originalMeeting) return;
 
+        // Optimistically remove from current day's meetings
         setMeetings(prev => prev.filter(m => m.id !== leadId));
 
         const { error } = await supabase
             .from('leads')
-            .update({ meeting_at: null, owner: null })
+            .update({ meeting_at: null, owner: null, next_step: 'Condiciones' })
             .eq('id', leadId);
         
         if (error) {
             console.error('Failed to cancel:', error);
             alert('Error: Could not cancel the meeting. The change has been reverted.');
             setMeetings(prev => [...prev, originalMeeting]);
+        } else {
+            // On success, update master leads list to make it available again
+            setLeads(prevLeads => prevLeads.map(lead =>
+                lead.id === leadId
+                ? { ...lead, meeting_at: undefined, owner: undefined, next_step: 'Condiciones' }
+                : lead
+            ));
         }
     };
     
