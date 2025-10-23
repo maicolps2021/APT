@@ -1,278 +1,207 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { EVENT_CODE } from '../lib/config';
-import Card from '../components/Card';
-import type { KPIsData, Lead } from '../types';
-import { generateKpiAnalysis } from '../lib/geminiService';
-import { hasGemini } from '../lib/ai';
-import { RefreshCw, LoaderCircle } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { db } from '../lib/supabaseClient';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { EVENT_CODE, ORG_UUID, EVENT_DATES } from '../lib/config';
+import type { Lead, KPIsData, DailyLeads, ChannelDistribution } from '../types';
+import Card from '../components/Card';
+import KpiFilters, { KpiFilterState } from '../components/KpiFilters';
+import { hasGemini } from '../lib/ai';
+import { generateKpiAnalysis } from '../lib/geminiService';
+import { LoaderCircle, Sparkles } from 'lucide-react';
 
 const KPIs: React.FC = () => {
-  const { status: authStatus, error: authError } = useAuth();
-  const [kpis, setKpis] = useState<KPIsData | null>(null);
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const eventDays = useMemo<number[]>(() => {
+    const dates = (EVENT_DATES as string).split(',').map(d => {
+        const date = new Date(String(d).trim());
+        return date.getUTCDate();
+    });
+    return [...new Set(dates)].sort((a,b)=> a - b);
+  }, []);
+
+  const [filters, setFilters] = useState<KpiFilterState>({
+    day: 'all',
+    source: 'all',
+  });
 
   const [aiQuery, setAiQuery] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
 
-  const fetchKPIs = useCallback(async () => {
-    if (authStatus !== 'authenticated') {
-        setLoading(false);
-        return;
-    }
+  const fetchLeads = useCallback(async () => {
     setLoading(true);
     setError(null);
-
     try {
       const leadsRef = collection(db, 'leads');
-      const q = query(leadsRef, where('event_code', '==', EVENT_CODE));
+      const q = query(leadsRef,
+        where('event_code', '==', EVENT_CODE),
+        where('org_id', '==', ORG_UUID),
+        orderBy('created_at', 'asc')
+      );
       const querySnapshot = await getDocs(q);
-      
-      const leads = querySnapshot.docs.map(doc => doc.data() as Lead);
-
-      if (leads.length > 0) {
-        // Perform aggregation on the client-side
-        const totalLeads = leads.length;
-        
-        const leadsByChannel = leads.reduce((acc, lead) => {
-            if (lead.channel) {
-                acc[lead.channel] = (acc[lead.channel] || 0) + 1;
-            }
-            return acc;
-        }, {} as { [key: string]: number });
-
-        const leadsByDay = leads.reduce((acc, lead) => {
-            const day = lead.day;
-            const existing = acc.find(item => item.day === day);
-            if (existing) {
-                existing.count++;
-            } else {
-                acc.push({ day, count: 1 });
-            }
-            return acc;
-        }, [] as { day: number, count: number }[]).sort((a, b) => a.day - b.day);
-
-        setKpis({
-          total_leads: totalLeads,
-          leads_by_channel: leadsByChannel,
-          leads_by_day: leadsByDay,
-        });
-
-      } else {
-        setKpis({ total_leads: 0, leads_by_channel: {}, leads_by_day: [] });
-      }
+      const leadsData = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        const createdAt = data.created_at && typeof data.created_at.toDate === 'function'
+          ? data.created_at.toDate().toISOString()
+          : new Date().toISOString();
+        return { id: doc.id, ...data, created_at: createdAt } as Lead;
+      });
+      setAllLeads(leadsData);
     } catch (err: any) {
-      console.error("Error fetching KPIs:", err);
-      setError("Failed to load KPI data. Please ensure the 'leads' collection exists and try again.");
-      setKpis(null);
+      console.error("Error fetching leads for KPIs:", err);
+      setError("Could not load lead data for KPIs. Please check the console.");
     } finally {
       setLoading(false);
     }
-  }, [authStatus]);
+  }, []);
 
   useEffect(() => {
-    fetchKPIs();
-  }, [fetchKPIs]);
+    fetchLeads();
+  }, [fetchLeads]);
 
-  const handleGenerateAnalysis = async () => {
-    if (!aiQuery.trim() || !kpis) return;
+  const filteredLeads = useMemo(() => {
+    return allLeads.filter(lead => {
+      const dayMatch = filters.day === 'all' || lead.day === filters.day;
+      const sourceMatch = filters.source === 'all' || lead.source === filters.source;
+      return dayMatch && sourceMatch;
+    });
+  }, [allLeads, filters]);
+
+  const kpis = useMemo<KPIsData>(() => {
+    const leads_by_channel: ChannelDistribution = {};
+    const leads_by_day_map: { [key: number]: number } = {};
+
+    for (const lead of filteredLeads) {
+      // By channel (using 'role' as channel)
+      const channel = lead.role || 'Otro';
+      leads_by_channel[channel] = (leads_by_channel[channel] || 0) + 1;
+
+      // By day
+      const day = lead.day;
+      leads_by_day_map[day] = (leads_by_day_map[day] || 0) + 1;
+    }
+
+    const leads_by_day: DailyLeads[] = Object.entries(leads_by_day_map)
+      .map(([day, count]) => ({ day: Number(day), count }))
+      .sort((a, b) => a.day - b.day);
+
+    return {
+      total_leads: filteredLeads.length,
+      leads_by_channel,
+      leads_by_day,
+    };
+  }, [filteredLeads]);
+
+  const handleFilterChange = <K extends keyof KpiFilterState>(key: K, value: KpiFilterState[K]) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleAiAnalysis = async () => {
+    if (!aiQuery.trim() || !hasGemini()) return;
     setIsAnalyzing(true);
-    setAiError(null);
     setAiResponse('');
     try {
       const response = await generateKpiAnalysis(aiQuery, kpis);
       setAiResponse(response);
-    } catch (err: any) {
-      setAiError(err.message || 'Failed to generate analysis.');
+    } catch (err) {
+      setAiResponse("An error occurred during analysis.");
+      console.error(err);
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const renderChannelDistribution = () => {
-    if (!kpis || !kpis.leads_by_channel || kpis.total_leads === 0) {
-      return <p className="text-gray-500 dark:text-gray-400">No channel data available.</p>;
-    }
-
-    const channels = Object.entries(kpis.leads_by_channel)
-      .map(([channel, count]): [string, number] => [channel, Number(count) || 0])
-      .sort(([, a], [, b]) => b - a);
-
+  const BarChart: React.FC<{ data: { label: string, value: number }[] }> = ({ data }) => {
+    const maxValue = Math.max(...data.map(d => d.value), 0);
     return (
-      <ul className="space-y-2">
-        {channels.map(([channel, count]) => {
-          const percentage = ((count / kpis.total_leads) * 100).toFixed(1);
-          return (
-            <li key={channel} className="flex justify-between items-center text-sm">
-              <span className="text-gray-700 dark:text-gray-300 capitalize">{channel}</span>
-              <span className="font-semibold text-gray-900 dark:text-white">{count} ({percentage}%)</span>
-            </li>
-          );
-        })}
-      </ul>
-    );
-  };
-  
-  const renderBarChart = () => {
-    if (!kpis || !kpis.leads_by_day || kpis.leads_by_day.length === 0) {
-      return <div className="flex items-center justify-center h-48 bg-gray-100 dark:bg-gray-800/50 rounded-lg"><p className="text-gray-500 dark:text-gray-400">No data for chart.</p></div>;
-    }
-
-    const maxCount = Math.max(...kpis.leads_by_day.map(d => d.count), 0);
-    if (maxCount === 0) {
-         return <div className="flex items-center justify-center h-48 bg-gray-100 dark:bg-gray-800/50 rounded-lg"><p className="text-gray-500 dark:text-gray-400">No leads to display in chart.</p></div>;
-    }
-
-    return (
-      <div className="flex justify-around items-end h-48 w-full bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg space-x-4">
-        {kpis.leads_by_day.map(({ day, count }) => (
-          <div key={day} className="flex flex-col items-center flex-1 h-full pt-4">
-             <div className="flex flex-col items-center justify-end w-full h-full">
-                <span className="text-xs text-gray-600 dark:text-gray-300 mb-1">{count}</span>
-                <div 
-                    className="w-full bg-blue-500 rounded-t-md hover:bg-blue-400 transition-all" 
-                    style={{ height: `${(count / maxCount) * 85}%` }}
-                    title={`Day ${day}: ${count} leads`}
-                ></div>
-             </div>
-            <span className="text-xs mt-2 text-gray-700 dark:text-gray-300 font-bold">Day {day}</span>
+      <div className="space-y-2">
+        {data.map(({ label, value }) => (
+          <div key={label} className="grid grid-cols-4 items-center gap-2 text-sm">
+            <div className="col-span-1 text-gray-600 dark:text-gray-400 truncate">{label}</div>
+            <div className="col-span-3 flex items-center gap-2">
+              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
+                <div
+                  className="bg-blue-600 h-4 rounded-full"
+                  style={{ width: maxValue > 0 ? `${(value / maxValue) * 100}%` : '0%' }}
+                />
+              </div>
+              <div className="font-semibold w-8 text-right">{value}</div>
+            </div>
           </div>
         ))}
       </div>
     );
   };
+  
+  const leadsByDayChartData = kpis.leads_by_day.map(d => ({ label: `Day ${d.day}`, value: d.count }));
+  const leadsByChannelChartData = Object.entries(kpis.leads_by_channel).map(([channel, count]) => ({ label: channel, value: count })).sort((a,b) => b.value - a.value);
 
-  const renderContent = () => {
-    if (authStatus === 'initializing') {
-        return <div className="text-center p-8 text-gray-500 dark:text-gray-400">Authenticating...</div>
-    }
-    if (authStatus === 'error') {
-        return <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">Authentication failed: {authError}. Please enable Anonymous sign-in in your Firebase project.</div>
-    }
-    if (loading) {
-        return <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading KPIs...</div>
-    }
-    if (error) {
-        return <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>
-    }
-    if (!kpis) {
-        return <div className="text-center p-8 text-gray-500 dark:text-gray-400">No KPI data found for this event.</div>
-    }
-
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
-          <Card className="md:col-span-1">
-            <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">Total Leads</h3>
-            <p className="text-5xl font-bold text-gray-900 dark:text-white">{kpis.total_leads}</p>
-          </Card>
-          <Card className="md:col-span-2">
-            <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">Leads by Channel</h3>
-            {renderChannelDistribution()}
-          </Card>
-
-          <Card className="md:col-span-3">
-             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-1">
-                    <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">Leads by Day</h3>
-                    <table className="min-w-full text-gray-800 dark:text-gray-200">
-                        <thead className="border-b border-gray-200 dark:border-gray-600">
-                            <tr>
-                            <th className="py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Day</th>
-                            <th className="py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Leads</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        {kpis.leads_by_day && kpis.leads_by_day.length > 0 ? (
-                            kpis.leads_by_day.map(({ day, count }) => (
-                                <tr key={day} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
-                                    <td className="py-2">{day}</td>
-                                    <td className="py-2 text-right font-semibold">{count}</td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr><td colSpan={2} className="py-4 text-center text-gray-500 dark:text-gray-400">No daily data.</td></tr>
-                        )}
-                        </tbody>
-                    </table>
-                </div>
-                <div className="lg:col-span-2">
-                    <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">Daily Distribution</h3>
-                    {renderBarChart()}
-                </div>
-             </div>
-          </Card>
-          {hasGemini() && (
-            <Card className="md:col-span-3">
-              <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">AI-Powered Event Analysis</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  Ask complex questions about your event data. The AI will use Thinking Mode for a deep analysis.
-              </p>
-              <textarea
-                  className="input w-full min-h-[80px]"
-                  placeholder="e.g., Based on the daily lead capture and channel distribution, what is our biggest opportunity for growth on the last day of the event? Suggest three concrete actions."
-                  value={aiQuery}
-                  onChange={(e) => setAiQuery(e.target.value)}
-                  disabled={isAnalyzing}
-              />
-              <button
-                  onClick={handleGenerateAnalysis}
-                  disabled={isAnalyzing || !aiQuery.trim()}
-                  className="mt-4 w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-all flex items-center justify-center"
-              >
-                  {isAnalyzing ? (
-                      <>
-                          <LoaderCircle className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
-                          Analyzing with Thinking Mode...
-                      </>
-                  ) : "Generate Analysis"}
-              </button>
-              {aiError && <p className="text-red-500 text-sm text-center mt-4">{aiError}</p>}
-              {aiResponse && (
-                  <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
-                      <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-2">Analysis Result:</h4>
-                      <div className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none">{aiResponse}</div>
-                  </div>
-              )}
-            </Card>
-          )}
-        </div>
-    );
-  }
+  if (loading) return <div className="text-center p-8">Loading KPI data...</div>;
+  if (error) return <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>;
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="flex flex-col md:flex-row justify-between items-center mb-8">
-        <div className="text-center md:text-left">
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">KPI Dashboard</h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-2">Key performance indicators for {EVENT_CODE}.</p>
-        </div>
-        <button 
-            onClick={fetchKPIs} 
-            disabled={loading || authStatus !== 'authenticated'}
-            className="mt-4 md:mt-0 flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-2 font-semibold text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 disabled:bg-gray-200 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-all"
-        >
-          <RefreshCw className={`mr-2 h-5 w-5 ${loading ? 'animate-spin': ''}`} />
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
+    <div className="mx-auto max-w-6xl space-y-8">
+      <div className="text-center">
+        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Event KPIs</h1>
+        <p className="text-gray-500 dark:text-gray-400 mt-2">Analyze lead capture performance in real-time.</p>
       </div>
 
-      {renderContent()}
+      <Card>
+        <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">Filters</h2>
+        <KpiFilters filters={filters} onFilterChange={handleFilterChange} eventDays={eventDays} />
+      </Card>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="md:col-span-1 text-center">
+            <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300">Total Leads Captured</h3>
+            <p className="text-5xl font-extrabold text-gray-900 dark:text-white mt-2">{kpis.total_leads}</p>
+        </Card>
+        <Card className="md:col-span-2">
+            <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300 mb-4">Leads per Day</h3>
+            {kpis.leads_by_day.length > 0 ? <BarChart data={leadsByDayChartData} /> : <p className="text-gray-500">No data for this period.</p>}
+        </Card>
+      </div>
 
-      <style>{`
-        @keyframes fade-in {
-          0% { opacity: 0; transform: translateY(10px); }
-          100% { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.5s ease-out forwards;
-        }
-      `}</style>
+      <Card>
+        <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300 mb-4">Leads by Channel (Role)</h3>
+        {Object.keys(kpis.leads_by_channel).length > 0 ? <BarChart data={leadsByChannelChartData} /> : <p className="text-gray-500">No data for this period.</p>}
+      </Card>
+
+      {hasGemini() && (
+        <Card>
+          <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">AI-Powered Analysis</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Ask a question about the current KPI data. For example: "Which was our best performing day and why?"</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={aiQuery}
+              onChange={(e) => setAiQuery(e.target.value)}
+              placeholder="Ask anything..."
+              className="input flex-grow"
+              disabled={isAnalyzing}
+            />
+            <button
+              onClick={handleAiAnalysis}
+              disabled={isAnalyzing || !aiQuery.trim()}
+              className="w-full sm:w-auto rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 flex items-center justify-center gap-2"
+            >
+              {isAnalyzing ? <LoaderCircle className="animate-spin" /> : <Sparkles size={16} />}
+              {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+            </button>
+          </div>
+          {aiResponse && (
+            <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                 <pre className="bg-transparent p-0 whitespace-pre-wrap font-sans">{aiResponse}</pre>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 };
