@@ -135,7 +135,7 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
                   className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60"
                   onClick={async () => {
                     try {
-                      const to = lead.phone || WHATSAPP;
+                      const to = lead.whatsapp || WHATSAPP;
                       if (!to) {
                           alert('No phone number available for this lead.');
                           return;
