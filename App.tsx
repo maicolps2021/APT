@@ -40,9 +40,12 @@ const SimpleRouter = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
   
-  // Special case for TV view, which shouldn't have the dashboard layout
+  // Special cases for views that shouldn't have the dashboard layout
   if (hash === '/tv') {
     return <TV />;
+  }
+  if (hash === '/capture') {
+    return <Capture />;
   }
 
   const Page = routes[hash] || Home;
