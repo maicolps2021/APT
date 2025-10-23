@@ -5,8 +5,9 @@ import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Lead } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { getPersonalizedWhatsAppMessage, generateEmailLink } from '../lib/templates';
+import { sendBuilderBotMessage } from '../services/builderbotService';
 import LeadDetailModal from '../components/LeadDetailModal';
-import { Search, Mail, MessageSquare, Edit, RefreshCw, LoaderCircle } from 'lucide-react';
+import { Search, Mail, Edit, RefreshCw, LoaderCircle, Send, Check, X } from 'lucide-react';
 
 const LeadList: React.FC = () => {
     const { status: authStatus, error: authError } = useAuth();
@@ -15,6 +16,7 @@ const LeadList: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+    const [sendingStates, setSendingStates] = useState<Record<string, 'idle' | 'sending' | 'sent' | 'error'>>({});
     
     const fetchLeads = useCallback(async () => {
         if (authStatus !== 'authenticated') {
@@ -55,10 +57,25 @@ const LeadList: React.FC = () => {
             alert("No WhatsApp number available for this lead.");
             return;
         }
-        const message = await getPersonalizedWhatsAppMessage(lead);
-        const waLink = `https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
-        window.open(waLink, '_blank');
+        setSendingStates(prev => ({ ...prev, [lead.id]: 'sending' }));
+        try {
+            const message = await getPersonalizedWhatsAppMessage(lead);
+            await sendBuilderBotMessage(lead.whatsapp, message);
+            setSendingStates(prev => ({ ...prev, [lead.id]: 'sent' }));
+            setTimeout(() => {
+                setSendingStates(prev => {
+                    const newStates = { ...prev };
+                    delete newStates[lead.id];
+                    return newStates;
+                });
+            }, 3000); // Reset state after 3 seconds
+        } catch (err) {
+            console.error("Failed to send WhatsApp message via BuilderBot:", err);
+            alert("Failed to send message. Please check the console for details.");
+            setSendingStates(prev => ({ ...prev, [lead.id]: 'error' }));
+        }
     };
+
 
     const handleSaveLead = (updatedLead: Lead) => {
         setLeads(prevLeads => prevLeads.map(l => l.id === updatedLead.id ? updatedLead : l));
@@ -77,34 +94,45 @@ const LeadList: React.FC = () => {
         });
     }, [leads, searchTerm]);
 
-    const renderLeadRow = (lead: Lead) => (
-        <tr key={lead.id} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800/50">
-            <td className="px-4 py-3">
-                <p className="font-semibold text-gray-900 dark:text-white">{lead.name}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{lead.company || 'N/A'}</p>
-            </td>
-            <td className="px-4 py-3">
-                {lead.whatsapp && <p className="text-sm">{lead.whatsapp}</p>}
-                {lead.email && <p className="text-sm">{lead.email}</p>}
-            </td>
-            <td className="px-4 py-3 text-sm">{lead.role || 'N/A'}</td>
-            <td className="px-4 py-3 text-sm text-center">{lead.scoring || '-'}</td>
-            <td className="px-4 py-3 text-sm">{lead.next_step || 'N/A'}</td>
-            <td className="px-4 py-3">
-                <div className="flex items-center justify-end gap-2">
-                    <button onClick={() => handleWhatsAppClick(lead)} disabled={!lead.whatsapp} className="p-2 rounded-md hover:bg-green-100 dark:hover:bg-green-900/50 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <MessageSquare className="h-5 w-5 text-green-500" />
-                    </button>
-                    <a href={lead.email ? generateEmailLink(lead) : '#'} target="_blank" rel="noreferrer" className={`p-2 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 ${!lead.email ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                        <Mail className="h-5 w-5 text-blue-500" />
-                    </a>
-                    <button onClick={() => setSelectedLead(lead)} className="p-2 rounded-md hover:bg-yellow-100 dark:hover:bg-yellow-900/50">
-                        <Edit className="h-5 w-5 text-yellow-500" />
-                    </button>
-                </div>
-            </td>
-        </tr>
-    );
+    const renderLeadRow = (lead: Lead) => {
+        const sendState = sendingStates[lead.id] || 'idle';
+        
+        return (
+            <tr key={lead.id} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800/50">
+                <td className="px-4 py-3">
+                    <p className="font-semibold text-gray-900 dark:text-white">{lead.name}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{lead.company || 'N/A'}</p>
+                </td>
+                <td className="px-4 py-3">
+                    {lead.whatsapp && <p className="text-sm">{lead.whatsapp}</p>}
+                    {lead.email && <p className="text-sm">{lead.email}</p>}
+                </td>
+                <td className="px-4 py-3 text-sm">{lead.role || 'N/A'}</td>
+                <td className="px-4 py-3 text-sm text-center">{lead.scoring || '-'}</td>
+                <td className="px-4 py-3 text-sm">{lead.next_step || 'N/A'}</td>
+                <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            onClick={() => handleWhatsAppClick(lead)}
+                            disabled={!lead.whatsapp || sendState === 'sending' || sendState === 'sent'}
+                            className="p-2 rounded-md hover:bg-green-100 dark:hover:bg-green-900/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                            {sendState === 'sending' && <LoaderCircle className="h-5 w-5 text-gray-500 animate-spin" />}
+                            {sendState === 'sent' && <Check className="h-5 w-5 text-green-500" />}
+                            {sendState === 'error' && <X className="h-5 w-5 text-red-500" />}
+                            {sendState === 'idle' && <Send className="h-5 w-5 text-green-500" />}
+                        </button>
+                        <a href={lead.email ? generateEmailLink(lead) : '#'} target="_blank" rel="noreferrer" className={`p-2 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 ${!lead.email ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                            <Mail className="h-5 w-5 text-blue-500" />
+                        </a>
+                        <button onClick={() => setSelectedLead(lead)} className="p-2 rounded-md hover:bg-yellow-100 dark:hover:bg-yellow-900/50">
+                            <Edit className="h-5 w-5 text-yellow-500" />
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        )
+    };
     
     if (authStatus === 'initializing') {
         return <div className="text-center p-8">Authenticating...</div>
