@@ -118,7 +118,13 @@ const LeadList: React.FC = () => {
         try {
             const leadRef = doc(db, 'leads', lead.id);
             await updateDoc(leadRef, { next_step: null });
-            handleSaveLead({ ...lead, next_step: undefined });
+            
+            // Directly update the state for this specific lead to fix the disappearing buttons bug
+            setLeads(prevLeads =>
+                prevLeads.map(l =>
+                    l.id === lead.id ? { ...l, next_step: undefined } : l
+                )
+            );
         } catch (err) {
             console.error("Error updating lead step:", err);
             alert("Failed to update lead. Check console for details.");

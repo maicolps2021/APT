@@ -32,9 +32,16 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
 
   useEffect(() => {
     if (successLead) {
-      setFormData(initialFormData);
+      // Automatically reset the form after a delay
+      const timer = setTimeout(() => {
+        onReset();
+      }, 4000); // 4-second delay
+
+      // Clear the timer if the component unmounts or user navigates away
+      return () => clearTimeout(timer);
     }
-  }, [successLead]);
+  }, [successLead, onReset]);
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -59,7 +66,7 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
       name: formData.name,
       company: formData.company || '',
       role: formData.role || 'Otro',
-      channel: formData.channel || '',
+      channel: formData.channel || formData.role || 'Otro',
       whatsapp: formData.whatsapp.replace(/\D/g, ''),
       email: formData.email || '',
       interest: formData.interest || 'Ambos',
@@ -88,6 +95,7 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
       }
       
       onSuccess(newLead);
+      // Form will clear itself via the useEffect hook listening to successLead
 
     } catch (err: any) {
       console.error("Error adding lead:", err);
@@ -104,13 +112,9 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           {successLead.name} from {successLead.company} has been successfully registered.
         </p>
-        <button
-          onClick={onReset}
-          className="mt-6 inline-flex items-center justify-center rounded-lg px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors"
-        >
-          <UserPlus className="mr-2 h-5 w-5" />
-          Capture Another Lead
-        </button>
+         <p className="text-sm text-gray-500 dark:text-gray-400 mt-6">
+          Returning to form automatically...
+        </p>
       </div>
     );
   }
