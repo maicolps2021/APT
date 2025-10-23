@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { loadPlaylist, subscribeToRaffleEvents, type TVItem } from '../lib/tv';
 import { listenTvEvents, type TvEvent } from '../lib/tvBus';
-import { getTvChannel, TVEventMessage, TVRaffleMessage, TVWelcomeMessage } from '../lib/broadcastService';
+import { getTvChannel } from '../lib/broadcastService';
+import type { TVEventMessage, TVRaffleMessage, TVWelcomeMessage } from '../lib/tvTypes';
 import { TV_WELCOME_DURATION_MS, TV_RAFFLE_DURATION_MS, TV_OVERLAY_THEME, TV_SHOW_QUEUE_COUNT, TV_LOGO_URL, TV_RAFFLE_THEME } from '../lib/config';
 
 // Combined queue item type

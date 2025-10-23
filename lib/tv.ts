@@ -2,7 +2,7 @@ import { storage, db } from './supabaseClient'; // Path kept for simplicity, poi
 import { ref, getDownloadURL } from 'firebase/storage';
 import { collection, onSnapshot, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { TV_PREFIX, ORG_UUID } from './config';
-import { TVRaffleMessage } from './broadcastService';
+import { TVRaffleMessage } from './tvTypes';
 
 export type TVItem = {
   type: "video" | "image";

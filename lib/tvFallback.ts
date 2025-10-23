@@ -1,6 +1,6 @@
 import { addDoc, collection, onSnapshot, orderBy, query, serverTimestamp, Timestamp, where } from 'firebase/firestore';
 import { db } from './supabaseClient';
-import type { TVWelcomeMessage } from './broadcastService';
+import type { TVWelcomeMessage } from './tvTypes';
 
 const COL = 'tv_events';
 
