@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
-import { collection, getDocs, query, where, orderBy, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, deleteDoc, doc, Timestamp, updateDoc } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Lead } from '../types';
 import Card from '../components/Card';
@@ -11,6 +11,14 @@ import LeadDetailModal from '../components/LeadDetailModal';
 import { useAuth } from '../contexts/AuthContext';
 
 type ContactStatus = 'idle' | 'sending' | 'sent' | 'error';
+
+const nextStepLabels: { [key: string]: string } = {
+  'Condiciones': 'Enviar Condiciones',
+  'Reunion': 'Agendar Reunión',
+  'Llamada15': 'Llamada 15min',
+  'FamTrip': 'Invitar a FamTrip'
+};
+
 
 const LeadList: React.FC = () => {
   const { status: authStatus, error: authError } = useAuth();
@@ -92,7 +100,22 @@ const LeadList: React.FC = () => {
     try {
       const message = await getPersonalizedWhatsAppMessage(lead);
       if (!lead.whatsapp) throw new Error("WhatsApp number is missing.");
+      
       await sendBuilderBotMessage(lead.whatsapp, message);
+
+      // If message sent successfully, update the lead's next step
+      const leadRef = doc(db, 'leads', lead.id);
+      await updateDoc(leadRef, {
+        next_step: 'Condiciones'
+      });
+
+      // Update local state for immediate UI feedback
+      setLeads(prevLeads => 
+        prevLeads.map(l => 
+          l.id === lead.id ? { ...l, next_step: 'Condiciones' } : l
+        )
+      );
+      
       setContactStatus(prev => ({ ...prev, [lead.id]: 'sent' }));
     } catch (err) {
       console.error("Failed to send message via BuilderBot", err);
@@ -190,7 +213,7 @@ const LeadList: React.FC = () => {
                             {lead.email && <div>{lead.email}</div>}
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
-                            {lead.next_step && <div className="font-semibold text-blue-600 dark:text-blue-400">Next: {lead.next_step}</div>}
+                            {lead.next_step && <div className="font-semibold text-blue-600 dark:text-blue-400">Next: {nextStepLabels[lead.next_step] || lead.next_step}</div>}
                             {lead.meeting_at && <div className="text-green-600 dark:text-green-400 font-medium">Meeting: {new Date(lead.meeting_at).toLocaleString()}</div>}
                             {lead.notes && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate max-w-xs" title={lead.notes}>Note: {lead.notes}</div>}
                         </td>
@@ -235,7 +258,7 @@ const LeadList: React.FC = () => {
                             {(lead.next_step || lead.meeting_at) && (
                                 <div>
                                     <h4 className="font-semibold text-gray-700 dark:text-gray-200">Status</h4>
-                                    {lead.next_step && <p className="font-semibold text-blue-600 dark:text-blue-400">Next: {lead.next_step}</p>}
+                                    {lead.next_step && <p className="font-semibold text-blue-600 dark:text-blue-400">Next: {nextStepLabels[lead.next_step] || lead.next_step}</p>}
                                     {lead.meeting_at && <p className="text-green-600 dark:text-green-400 font-medium">Meeting: {new Date(lead.meeting_at).toLocaleString()}</p>}
                                 </div>
                             )}
