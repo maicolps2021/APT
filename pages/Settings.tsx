@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { db, storage } from '../lib/supabaseClient';
 import { collection, doc, getDocs, setDoc, query, where } from 'firebase/firestore';
 import { ref, listAll, uploadBytesResumable, getDownloadURL, uploadString } from 'firebase/storage';
-import { ORG_UUID, EVENT_CODE, TV_PREFIX } from '../lib/config';
+import { ORG_UUID, EVENT_CODE, TV_PREFIX, EVENT_DATES, WHATSAPP } from '../lib/config';
 import Card from '../components/Card';
 import { TVItem } from '../lib/tv';
-import { LoaderCircle, Upload, Plus, Trash2, GripVertical, FileVideo, FileImage } from 'lucide-react';
+import { LoaderCircle, Upload, Plus, Trash2, GripVertical, FileVideo, FileImage, CheckCircle, XCircle } from 'lucide-react';
+import { hasGemini } from '../lib/ai';
+import { hasBuilderBot } from '../services/builderbotService';
 
 interface MessageTemplate {
     id: string;
@@ -14,6 +16,16 @@ interface MessageTemplate {
 }
 
 const leadChannels = ['Guia', 'Agencia', 'Hotel', 'Mayorista', 'Transportista', 'Otro'];
+
+const StatusPill: React.FC<{ status: boolean }> = ({ status }) => (
+    <div className={`flex items-center gap-2 p-3 rounded-lg ${status ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
+        {status ? <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" /> : <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />}
+        <span className={`font-medium ${status ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
+            {status ? 'Active' : 'Inactive'}
+        </span>
+    </div>
+);
+
 
 const Settings: React.FC = () => {
     const [mediaFiles, setMediaFiles] = useState<string[]>([]);
@@ -127,7 +139,6 @@ const Settings: React.FC = () => {
             const playlistToSave = { items: playlist.map(({ type, src, ...rest }) => ({
                 ...rest,
                 type,
-                // Save only the filename, not the full URL
                 src: src.split('/').pop()?.split('?')[0] || src, 
             }))};
             
@@ -205,8 +216,50 @@ const Settings: React.FC = () => {
     return (
         <div className="mx-auto max-w-6xl space-y-8">
             <div className="text-center">
-                <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Settings & Management</h1>
-                <p className="text-gray-500 dark:text-gray-400 mt-2">Manage your event's dynamic content and messaging.</p>
+                <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Settings & Configuration</h1>
+                <p className="text-gray-500 dark:text-gray-400 mt-2">Manage your event's dynamic content, messaging, and view integration status.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <Card>
+                    <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">Event Details</h2>
+                    <p className="text-sm text-gray-500 mb-4">Current application settings loaded from environment variables. These are read-only.</p>
+                    <div className="space-y-3 text-sm">
+                        <div className="flex justify-between items-center">
+                            <span className="text-gray-600 dark:text-gray-400">Organization ID (ORG_UUID):</span>
+                            <code className="bg-gray-200 dark:bg-gray-700 p-1 rounded font-mono text-xs">{ORG_UUID}</code>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-gray-600 dark:text-gray-400">Event Code:</span>
+                            <code className="bg-gray-200 dark:bg-gray-700 p-1 rounded font-mono text-xs">{EVENT_CODE}</code>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-gray-600 dark:text-gray-400">Event Dates:</span>
+                            <code className="bg-gray-200 dark:bg-gray-700 p-1 rounded font-mono text-xs">{EVENT_DATES}</code>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-gray-600 dark:text-gray-400">Contact WhatsApp:</span>
+                            <code className="bg-gray-200 dark:bg-gray-700 p-1 rounded font-mono text-xs">{WHATSAPP}</code>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-gray-600 dark:text-gray-400">TV Playlist Prefix:</span>
+                            <code className="bg-gray-200 dark:bg-gray-700 p-1 rounded font-mono text-xs">{TV_PREFIX}</code>
+                        </div>
+                    </div>
+                </Card>
+                 <Card>
+                    <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">API Integrations Status</h2>
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                            <span className="font-medium text-gray-700 dark:text-gray-300">Google Gemini AI</span>
+                            <StatusPill status={hasGemini()} />
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="font-medium text-gray-700 dark:text-gray-300">BuilderBot WhatsApp API</span>
+                            <StatusPill status={hasBuilderBot()} />
+                        </div>
+                    </div>
+                </Card>
             </div>
             
             {error && <div className="p-4 bg-red-100 text-red-800 rounded-lg">{error}</div>}

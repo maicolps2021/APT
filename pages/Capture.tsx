@@ -1,10 +1,9 @@
-
 import React, { useState } from 'react';
 import { LeadForm } from "../components/LeadForm";
 import { QRDisplay } from "../components/QRDisplay";
 import { WHATSAPP } from "../lib/config";
 import type { Lead } from '../types';
-import { ArrowLeft, Megaphone } from 'lucide-react';
+import { Megaphone } from 'lucide-react';
 
 export default function Capture() {
   const [successLead, setSuccessLead] = useState<Lead | null>(null);
@@ -20,10 +19,6 @@ export default function Capture() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center p-4 selection:bg-blue-200 dark:selection:bg-blue-800 relative">
-        <a href="#/" className="absolute top-6 left-6 flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-            <ArrowLeft size={18} />
-            <span>Back to Dashboard</span>
-        </a>
       <div className="w-full max-w-5xl">
         <div className="text-center mb-8">
           <Megaphone className="h-12 w-12 text-blue-600 dark:text-blue-400 mx-auto mb-4" />
