@@ -5,9 +5,9 @@ import { ORG_UUID, EVENT_CODE, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
 import { generateWelcomeMessage } from '../lib/geminiService';
 import { getTvChannel } from '../lib/broadcastService';
-import { sendTvEvent } from '../lib/tvFallback';
-import { CheckCircle, LoaderCircle } from 'lucide-react';
 import { hasGemini } from '../lib/ai';
+import { emitTvEvent } from '../lib/tvBus';
+import { CheckCircle, LoaderCircle } from 'lucide-react';
 
 interface LeadFormProps {
   onSuccess: (lead: Lead) => void;
@@ -32,15 +32,12 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
 
   useEffect(() => {
     if (successLead) {
-      // Automatically reset the form after a delay
       const timer = setTimeout(() => {
-        onReset(); // Hides the success message via parent state
-        setFormData(initialFormData); // Resets the form fields
-        setIsLoading(false); // Resets the button state
-        setError(null); // Clears any stale errors
-      }, 4000); // 4-second delay
-
-      // Clear the timer if the component unmounts or user navigates away
+        onReset();
+        setFormData(initialFormData);
+        setIsLoading(false);
+        setError(null);
+      }, 4000);
       return () => clearTimeout(timer);
     }
   }, [successLead, onReset]);
@@ -94,17 +91,23 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
 
       if (hasGemini()) {
         const welcomeMessage = await generateWelcomeMessage(newLead);
-        // Use Broadcast Channel if available, otherwise use Firestore fallback
+        
+        const eventPayload = {
+          lead: { id: newLead.id, name: newLead.name, company: newLead.company, notes: newLead.notes },
+          welcomeMessage: welcomeMessage,
+        };
+
+        // Primary: Firestore (multi-device)
+        await emitTvEvent(eventPayload);
+
+        // Secondary optimization (same-device)
         const channel = getTvChannel();
         if (channel) {
-          channel.postMessage({ lead: newLead, welcomeMessage });
-        } else {
-          await sendTvEvent({ lead: newLead, welcomeMessage });
+          channel.postMessage(eventPayload);
         }
       }
       
       onSuccess(newLead);
-      // Form will clear itself via the useEffect hook listening to successLead
 
     } catch (err: any) {
       console.error("Error adding lead:", err);

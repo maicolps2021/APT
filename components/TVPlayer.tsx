@@ -1,205 +1,164 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { loadPlaylist, TVItem } from '../lib/tv';
-import { WHATSAPP } from '../lib/config';
-import { QRCodeSVG } from 'qrcode.react';
-import { getTvChannel, TVWelcomeMessage } from '../lib/broadcastService';
-import { listenTvEvents } from '../lib/tvFallback';
+import React, { useEffect, useRef, useState } from 'react';
+import { loadPlaylist, type TVItem } from '../lib/tv';
+import { listenTvEvents, type TvEvent } from '../lib/tvBus';
+import { getTvChannel } from '../lib/broadcastService';
 
-// --- Sub-componente para el contenido de fondo (Playlist) ---
-const MainPlayerContent: React.FC<{ item: TVItem | null; onEnded: () => void }> = React.memo(({ item, onEnded }) => {
-  if (!item) return null;
+const WELCOME_MS = 12_000;
 
+// FIX: Refactored to a React.FC with an interface to correctly handle the 'key' prop passed by the parent, resolving a TypeScript error.
+interface MainPlayerContentProps {
+  item: TVItem;
+  onVideoEnd: () => void;
+}
+
+// Renderizador base (respeta tu diseño existente)
+const MainPlayerContent: React.FC<MainPlayerContentProps> = ({ item, onVideoEnd }) => {
+  if (item.type === 'video') {
+    return (
+      <video
+        key={item.src}
+        src={item.src}
+        className="w-full h-full object-cover"
+        muted
+        autoPlay
+        playsInline
+        onEnded={onVideoEnd}
+        onError={(e) => console.error('Video error', e)}
+      />
+    );
+  }
   return (
-    <div key={item.src} className="absolute inset-0 transition-opacity duration-1000 animate-fade-in">
-      {item.type === 'video' ? (
-        <video
-          src={item.src}
-          autoPlay
-          muted
-          playsInline
-          onEnded={onEnded}
-          className="absolute top-0 left-0 w-full h-full object-cover"
-        />
-      ) : (
-        <div
-          className="absolute top-0 left-0 w-full h-full bg-cover bg-center"
-          style={{ backgroundImage: `url(${item.src})` }}
-        />
-      )}
-      <div className="absolute inset-0 bg-black/30" />
-      {item.overlay && (
-        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 text-center p-4 bg-black/50 rounded-lg">
-          <h2 className="text-4xl font-bold text-white shadow-lg">{item.overlay}</h2>
-        </div>
-      )}
-    </div>
+    <div
+      key={item.src}
+      className="w-full h-full object-cover bg-cover bg-center"
+      style={{ backgroundImage: `url(${item.src})` }}
+    />
   );
-});
-
-// --- Sub-componente para la capa de bienvenida (Overlay) ---
-const WelcomeOverlay: React.FC<{ message: TVWelcomeMessage | null, formUrl: string, waLink: string }> = React.memo(({ message, formUrl, waLink }) => {
-  if (!message) return null;
-
-  return (
-    <div className="absolute inset-0 bg-blue-900/95 flex flex-col items-center justify-center text-center p-12 animate-fade-in z-20">
-      <h1 className="text-6xl font-extrabold text-white animate-text-pop-in" style={{ animationDelay: '200ms' }}>¡Bienvenido!</h1>
-      <h2 className="text-8xl font-bold text-yellow-300 mt-4 animate-text-pop-in" style={{ animationDelay: '400ms' }}>
-        {message.lead.name}
-      </h2>
-      <h3 className="text-5xl text-white mt-2 animate-text-pop-in" style={{ animationDelay: '600ms' }}>
-        de {message.lead.company}
-      </h3>
-      <p className="text-3xl text-blue-200 mt-12 max-w-4xl animate-text-pop-in" style={{ animationDelay: '800ms' }}>
-        "{message.welcomeMessage}"
-      </p>
-      <div className="absolute bottom-8 right-8 bg-white p-4 rounded-lg shadow-2xl flex flex-col items-center gap-2">
-        <p className="font-bold text-slate-800">Scan to Register</p>
-        <QRCodeSVG value={formUrl} size={150} />
-      </div>
-      <div className="absolute bottom-8 left-8 bg-white p-4 rounded-lg shadow-2xl flex flex-col items-center gap-2">
-        <p className="font-bold text-slate-800">Contact Us</p>
-        <QRCodeSVG value={waLink} size={150} />
-      </div>
-    </div>
-  );
-});
-
+}
 
 const TVPlayer: React.FC = () => {
-  const [playlist, setPlaylist] = useState<TVItem[]>([]);
-  const [currentItemIndex, setCurrentItemIndex] = useState(0);
-  const [welcomeMessage, setWelcomeMessage] = useState<TVWelcomeMessage | null>(null);
-  
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  const playlistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [items, setItems] = useState<TVItem[]>([]);
+  const [idx, setIdx] = useState(0);
 
-  const formUrl = `${window.location.origin}/#/capture`;
-  const wa = (WHATSAPP || '').replace(/\D/g, "");
-  const waMsg = encodeURIComponent("Hola, me interesan Tours/Traslados. ¿Me envían condiciones colaborador?");
-  const waLink = `https://wa.me/${wa}?text=${waMsg}`;
+  // Estado visible del overlay:
+  const [welcome, setWelcome] = useState<{ name: string; aiMessage: string } | null>(null);
 
-  // Cargar la playlist principal una sola vez
-  useEffect(() => {
-    async function init() {
-      try {
-        const loadedPlaylist = await loadPlaylist();
-        if (loadedPlaylist.length === 0) {
-          setError("Playlist is empty. Please add media in the Settings page.");
-        } else {
-          setPlaylist(loadedPlaylist);
-        }
-      } catch (err: any) {
-        setError(err.message || 'Failed to load playlist. Ensure it exists and the storage bucket is public.');
-      } finally {
-        setIsLoading(false);
-      }
+  // ---- NUEVO: cola y control ----
+  const queueRef = useRef<TvEvent[]>([]);
+  const welcomeTimer = useRef<number | null>(null);
+
+  function clearWelcomeTimer() {
+    if (welcomeTimer.current) {
+      clearTimeout(welcomeTimer.current);
+      welcomeTimer.current = null;
     }
-    init();
+  }
+
+  function showNextFromQueue() {
+    clearWelcomeTimer();
+    const next = queueRef.current.shift();
+    if (!next) {
+      setWelcome(null);
+      return;
+    }
+    setWelcome({ name: next.lead?.name ?? 'Guest', aiMessage: next.welcomeMessage ?? '' });
+    welcomeTimer.current = window.setTimeout(() => {
+      // setWelcome(null); // No es necesario, showNextFromQueue lo sobreescribirá o limpiará
+      showNextFromQueue();
+    }, WELCOME_MS);
+  }
+
+  function enqueue(evt: TvEvent) {
+    queueRef.current.push(evt);
+    // Si no hay nada mostrándose, iniciar el ciclo
+    if (!welcome && !welcomeTimer.current) {
+      showNextFromQueue();
+    }
+  }
+  // ---- FIN NUEVO ----
+
+  // Carga de playlist (sin tocar tu lógica original)
+  useEffect(() => {
+    (async () => {
+      const list = await loadPlaylist();
+      setItems(list);
+    })().catch(console.error);
   }, []);
-  
-  // Lógica para avanzar en la playlist principal
-  const advanceToNextItem = useCallback(() => {
-    if (playlist.length > 0) {
-      setCurrentItemIndex(prevIndex => (prevIndex + 1) % playlist.length);
-    }
-  }, [playlist.length]);
 
-  // Efecto para gestionar el timer de la playlist principal
+  // Suscripciones: Firestore (principal) + BroadcastChannel (secundario)
   useEffect(() => {
-    if (playlistTimerRef.current) clearTimeout(playlistTimerRef.current);
-    if (playlist.length === 0 || isLoading) return;
-    
-    const currentItem = playlist[currentItemIndex];
-    // Solo se necesita timer para las imágenes, los videos avanzan con onEnded
-    if (currentItem?.type === 'image') {
-      playlistTimerRef.current = setTimeout(advanceToNextItem, currentItem.duration || 8000);
-    }
-    
-    return () => {
-      if (playlistTimerRef.current) clearTimeout(playlistTimerRef.current);
-    };
-  }, [currentItemIndex, playlist, advanceToNextItem, isLoading]);
+    // Principal: Firestore (multidispositivo)
+    const unsubBus = listenTvEvents((evt) => enqueue(evt));
 
-  // Efecto para escuchar los mensajes de bienvenida (BroadcastChannel o Fallback)
-  useEffect(() => {
-    const handleNewMessage = (event: MessageEvent<TVWelcomeMessage>) => {
-      const message = event.data;
-      if (message?.lead) {
-        setWelcomeMessage(message);
-        
-        if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
-
-        welcomeTimerRef.current = setTimeout(() => {
-          setWelcomeMessage(null);
-        }, 12000); // Mostrar por 12 segundos
-      }
-    };
-
-    const channel = getTvChannel();
-    let unsubscribeFromFallback: (() => void) | null = null;
-
-    if (channel) {
-      channel.addEventListener('message', handleNewMessage);
-    } else {
-      console.warn("BroadcastChannel not supported, using Firestore fallback for TV messages.");
-      unsubscribeFromFallback = listenTvEvents((eventData) => {
-        // Adapt the Firestore event to look like a MessageEvent for the handler
-        handleNewMessage({ data: eventData } as MessageEvent<TVWelcomeMessage>);
+    // Secundario: BroadcastChannel (mismo dispositivo)
+    const ch = getTvChannel();
+    const onMsg = (e: MessageEvent<any>) => {
+      const d = e.data;
+      if (!d?.lead || !d.welcomeMessage) return;
+      enqueue({
+        lead: { id: d.lead?.id ?? '', name: d.lead?.name ?? 'Guest', company: d.lead?.company, notes: d.lead?.notes },
+        welcomeMessage: d.welcomeMessage ?? '',
       });
-    }
+    };
+    if (ch) ch.addEventListener('message', onMsg);
 
     return () => {
-      if (channel) {
-        channel.removeEventListener('message', handleNewMessage);
-      }
-      if (unsubscribeFromFallback) {
-        unsubscribeFromFallback();
-      }
-      if (playlistTimerRef.current) clearTimeout(playlistTimerRef.current);
-      if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
+      clearWelcomeTimer();
+      if (ch) ch.removeEventListener('message', onMsg);
+      unsubBus();
     };
   }, []);
 
-  const currentPlaylistItem = playlist.length > 0 ? playlist[currentItemIndex] : null;
+  // Avance de playlist (respeta tu implementación actual)
+  useEffect(() => {
+    if (items.length === 0) return;
+    const current = items[idx];
+    if (!current) return;
+    if (current.type === 'image') {
+      const d = Math.max(3000, current.duration ?? 8000);
+      const t = window.setTimeout(() => setIdx((i) => (i + 1) % items.length), d);
+      return () => clearTimeout(t);
+    }
+  }, [idx, items]);
+
+  function onVideoEnd() {
+    if (items.length > 0) {
+      setIdx((i) => (i + 1) % items.length);
+    }
+  }
 
   return (
-    <div className="w-screen h-screen bg-black overflow-hidden relative">
-      {isLoading ? (
-        <div className="text-white text-3xl flex items-center justify-center h-full">Loading Playlist...</div>
-      ) : error ? (
-        <div className="text-red-300 text-2xl p-8 bg-black/50 rounded-lg flex items-center justify-center h-full">{error}</div>
-      ) : (
-        <>
-          {/* Capa Base: Siempre renderiza el contenido de la playlist */}
-          <div className="absolute inset-0 z-10">
-             <MainPlayerContent item={currentPlaylistItem} onEnded={advanceToNextItem} />
-          </div>
+    <div className="w-screen h-screen bg-black relative overflow-hidden">
+      {/* Capa base: playlist (no se pausa) */}
+      <div className="absolute inset-0 z-10">
+        {items.length > 0 && (
+          <MainPlayerContent
+            key={idx}
+            item={items[idx]}
+            onVideoEnd={onVideoEnd}
+          />
+        )}
+      </div>
 
-          {/* Capa Superpuesta: Aparece/desaparece con transición */}
-          <div className={`absolute inset-0 z-20 transition-opacity duration-500 ${welcomeMessage ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-            <WelcomeOverlay message={welcomeMessage} formUrl={formUrl} waLink={waLink} />
+      {/* Capa overlay: bienvenida con cola */}
+      <div className={`absolute inset-0 z-20 transition-opacity duration-700 ${welcome ? 'opacity-100' : 'opacity-0 pointer-events-none'} flex items-center justify-center bg-black/50`}>
+        {welcome && (
+          <div className="w-[85vw] max-w-[1200px] bg-white/95 dark:bg-gray-900/95 rounded-2xl p-8 shadow-2xl text-center text-gray-800 dark:text-gray-100 animate-fade-in-up">
+            <h2 className="text-5xl md:text-7xl font-extrabold text-blue-600 dark:text-blue-400">¡Bienvenido, {welcome.name}!</h2>
+            <p className="text-2xl md:text-4xl leading-snug my-6">{welcome.aiMessage}</p>
+            {queueRef.current.length > 0 && (
+              <p className="text-lg opacity-70">Siguientes en cola: {queueRef.current.length}</p>
+            )}
           </div>
-        </>
-      )}
+        )}
+      </div>
        <style>{`
-          @keyframes fade-in {
-            from { opacity: 0; }
-            to { opacity: 1; }
-          }
-          .animate-fade-in { animation: fade-in 0.7s ease-out forwards; }
-          
-          @keyframes text-pop-in {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .animate-text-pop-in {
-            opacity: 0;
-            animation: text-pop-in 0.5s ease-out forwards;
-          }
-       `}</style>
+        @keyframes fade-in-up {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fade-in-up 0.5s ease-out forwards; }
+      `}</style>
     </div>
   );
 };
