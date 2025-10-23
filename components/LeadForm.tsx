@@ -99,12 +99,23 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
       const foundDocs: Lead[] = [];
       querySnapshots.forEach(snapshot => {
           snapshot.forEach(doc => {
-              const data = doc.data();
-              // Duck-typing to check for Firestore Timestamp object to avoid TS build error
-              const createdAt = data.created_at && typeof data.created_at.toDate === 'function' 
-                ? data.created_at.toDate().toISOString() 
+              // Explicitly type the data coming from Firestore
+              const data = doc.data() as Omit<Lead, 'id' | 'created_at'> & { created_at?: Timestamp };
+              
+              // Convert the Firestore Timestamp to an ISO string
+              const createdAtString = data.created_at && typeof data.created_at.toDate === 'function'
+                ? data.created_at.toDate().toISOString()
                 : new Date().toISOString();
-              foundDocs.push({ id: doc.id, ...data, created_at: createdAt } as Lead);
+
+              // Construct the final object conforming to the Lead interface
+              const leadData: Lead = {
+                // Spread the rest of the data, which is now correctly typed
+                ...(data as Omit<Lead, 'id' | 'created_at'>),
+                id: doc.id,
+                created_at: createdAtString,
+              };
+
+              foundDocs.push(leadData);
           });
       });
       
