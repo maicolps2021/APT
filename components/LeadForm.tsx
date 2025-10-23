@@ -1,3 +1,4 @@
+
 import React, { useState, FormEvent, useMemo, useRef } from 'react';
 import { db } from '../lib/supabaseClient';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -7,6 +8,8 @@ import { generateWelcomeMessage } from '../lib/geminiService';
 import { emitTvEvent } from '../lib/tvBus';
 import { CheckCircle, LoaderCircle, PartyPopper, RefreshCw } from 'lucide-react';
 import { hasGemini } from '../lib/ai';
+import { LEAD_CATEGORY_LABELS } from '../types';
+import { LEAD_CATEGORY_ORDER } from '../lib/categoryMap';
 
 
 interface LeadFormProps {
@@ -30,7 +33,7 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
   const initialFormData: Omit<Lead, 'id' | 'created_at' | 'org_id' | 'event_code' | 'day' | 'slot' | 'source'> = {
     name: '',
     company: '',
-    role: 'Guia',
+    role: 'guias',
     whatsapp: '',
     email: '',
     interest: 'Ambos',
@@ -137,12 +140,9 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
       <div>
         <label htmlFor="role" className="label">Role</label>
         <select id="role" name="role" value={formData.role} onChange={handleChange} className="input">
-          <option>Guia</option>
-          <option>Agencia</option>
-          <option>Hotel</option>
-          <option>Mayorista</option>
-          <option>Transportista</option>
-          <option>Otro</option>
+          {LEAD_CATEGORY_ORDER.map(key => (
+            <option key={key} value={key}>{LEAD_CATEGORY_LABELS[key]}</option>
+          ))}
         </select>
       </div>
 

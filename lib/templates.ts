@@ -1,7 +1,9 @@
+
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './supabaseClient';
 import { ORG_UUID } from './config';
 import type { Lead } from '../types';
+import { normalizeCategory } from './categoryMap';
 
 
 export type LeadCategory = 'guia'|'agencia'|'hotel'|'mayorista'|'transportista'|'otro';
@@ -13,8 +15,9 @@ export async function loadWATemplates(orgId: string): Promise<Record<string,stri
 }
 
 export function pickTemplate(templates: Record<string,string>, category?: string): string {
-  const key = (category || '').toLowerCase();
-  return (templates[key] || templates['otro'] || '').trim();
+  const normalizedKey = normalizeCategory(category);
+  // Fallback chain: specific category -> touroperador -> guias -> empty
+  return (templates[normalizedKey] || templates['touroperador'] || templates['guias'] || '').trim();
 }
 
 export function renderTemplate(tpl: string, vars: Record<string,string>) {
@@ -27,7 +30,7 @@ export async function getResolvedWhatsAppText(lead: Lead): Promise<string> {
     if (!orgId) return '';
     
     const templates = await loadWATemplates(orgId);
-    const category = lead.role?.toLowerCase();
+    const category = lead.role;
     const tpl = pickTemplate(templates, category);
     
     const firstName = (lead.name || '').split(' ')[0] || 'there';

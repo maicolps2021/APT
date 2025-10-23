@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { collection, doc, updateDoc, query, where, orderBy, limit, startAfter, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
 import { createPortal } from 'react-dom';
@@ -10,6 +11,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { sendWhatsAppVia } from '../services/messaging';
 import { getResolvedWhatsAppText } from '../lib/templates';
 import { Mail, MessageSquare, CheckCircle2, MoreVertical, Calendar, Phone, Send, Plane, Clock, LoaderCircle, Search, UserPlus, Trash2, Bot } from 'lucide-react';
+import { LeadCategory, LEAD_CATEGORY_LABELS } from '../types';
+import { LEAD_CATEGORY_ORDER } from '../lib/categoryMap';
 
 // Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
 function asDate(x: any): Date | null {
@@ -93,15 +96,7 @@ const LeadList: React.FC = () => {
   useEffect(() => { localStorage.setItem('lead_filter_channel', filterChannel); }, [filterChannel]);
   useEffect(() => { localStorage.setItem('lead_search', search); }, [search]);
   
-  const availableChannels = useMemo(() => {
-    const allKnownChannels = new Set<string>();
-    leads.forEach(l => {
-      if(l.role) allKnownChannels.add(l.role);
-    });
-    // Add roles as potential channels
-    ['Guia', 'Agencia', 'Hotel', 'Mayorista', 'Transportista', 'Otro'].forEach(r => allKnownChannels.add(r));
-    return Array.from(allKnownChannels);
-  }, [leads]);
+  const availableChannels = LEAD_CATEGORY_ORDER;
 
   const fetchLeads = useCallback(async (isInitial = false) => {
     if (loadingPage) return;
@@ -460,7 +455,7 @@ const LeadList: React.FC = () => {
           </select>
           <select value={filterChannel} onChange={e=>setFilterChannel(e.target.value)} className="input flex-shrink-0">
             <option value="">All channels</option>
-            {availableChannels.map(c => <option key={c} value={c}>{c}</option>)}
+            {availableChannels.map(c => <option key={c} value={c}>{LEAD_CATEGORY_LABELS[c]}</option>)}
           </select>
         </div>
         {renderContent()}

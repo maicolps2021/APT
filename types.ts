@@ -1,4 +1,20 @@
 
+export type LeadCategory =
+  | 'touroperador'
+  | 'hoteles'
+  | 'transportistas'
+  | 'parques'
+  | 'guias'
+  | 'souvenirs_restaurantes';
+
+export const LEAD_CATEGORY_LABELS: Record<LeadCategory, string> = {
+  touroperador: 'TourOperador',
+  hoteles: 'Hoteles',
+  transportistas: 'Transportistas',
+  parques: 'Parques',
+  guias: 'Guías',
+  souvenirs_restaurantes: 'Souvenirs y restaurantes',
+};
 
 export interface Lead {
   id: string;
@@ -10,7 +26,7 @@ export interface Lead {
   slot: 'AM' | 'PM';
   name: string;
   company?: string;
-  role?: 'Guia' | 'Agencia' | 'Hotel' | 'Mayorista' | 'Transportista' | 'Otro';
+  role?: LeadCategory;
   channel?: string;
   whatsapp?: string;
   email?: string;

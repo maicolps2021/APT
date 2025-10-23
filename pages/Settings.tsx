@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { db, storage } from '../lib/supabaseClient';
 import { collection, doc, getDocs, setDoc, query, where, getDoc, serverTimestamp } from 'firebase/firestore';
@@ -8,8 +9,8 @@ import { TVItem } from '../lib/tv';
 import { LoaderCircle, Upload, Plus, Trash2, GripVertical, FileVideo, FileImage, CheckCircle, XCircle } from 'lucide-react';
 import { hasGemini } from '../lib/ai';
 import { hasBuilderBot } from '../services/builderbotService';
-
-const leadChannels = ['Guia', 'Agencia', 'Hotel', 'Mayorista', 'Transportista', 'Otro'];
+import { LEAD_CATEGORY_LABELS } from '../types';
+import { LEAD_CATEGORY_ORDER } from '../lib/categoryMap';
 
 const StatusPill: React.FC<{ status: boolean }> = ({ status }) => (
     <div className={`flex items-center gap-2 p-3 rounded-lg ${status ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
@@ -80,9 +81,8 @@ const Settings: React.FC = () => {
             
             // Ensure all channels have an entry in the state for the UI
             const allTemplates: Record<string, string> = {};
-            leadChannels.forEach(channel => {
-                const key = channel.toLowerCase();
-                allTemplates[key] = fetchedTemplates[key] || '';
+            LEAD_CATEGORY_ORDER.forEach(slug => {
+                allTemplates[slug] = fetchedTemplates[slug] || '';
             });
 
             setTemplates(allTemplates);
@@ -337,14 +337,14 @@ const Settings: React.FC = () => {
                 <p className="text-sm text-gray-500 mb-4">Customize the message sent for each lead category. Use <code className="bg-gray-200 dark:bg-gray-700 p-1 rounded text-xs">{'{{nombre}}'}</code> as a placeholder for the lead's first name.</p>
                 {loadingTemplates ? <p>Loading templates...</p> : (
                     <div className="space-y-4">
-                        {leadChannels.map(channel => (
-                            <div key={channel}>
-                                <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">{channel}</label>
+                        {LEAD_CATEGORY_ORDER.map(slug => (
+                            <div key={slug}>
+                                <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">{LEAD_CATEGORY_LABELS[slug]}</label>
                                 <textarea
-                                    value={templates[channel.toLowerCase()] || ''}
-                                    onChange={(e) => handleTemplateChange(channel.toLowerCase(), e.target.value)}
+                                    value={templates[slug] || ''}
+                                    onChange={(e) => handleTemplateChange(slug, e.target.value)}
                                     className="input w-full min-h-[80px]"
-                                    placeholder={`Default message for ${channel}`}
+                                    placeholder={`Default message for ${LEAD_CATEGORY_LABELS[slug]}`}
                                 />
                             </div>
                         ))}
