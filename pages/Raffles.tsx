@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
-import { collection, getDocs, doc, getDoc, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { db } from '../lib/supabaseClient';
+import { collection, getDocs, doc, getDoc, query, where, orderBy } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Raffle, Lead } from '../types';
 import Card from '../components/Card';
 import RafflePanel from '../components/RafflePanel';
+import { RaffleCard, RaffleWithWinner } from '../components/RaffleCard';
+import { deleteRaffle, drawWinner } from '../lib/raffles';
+import { LoaderCircle } from 'lucide-react';
 
-type PastRaffle = Raffle & {
-    winner: Pick<Lead, 'name' | 'company'> | null;
-}
 
 const Raffles: React.FC = () => {
-    const [pastRaffles, setPastRaffles] = useState<PastRaffle[]>([]);
+    const [raffles, setRaffles] = useState<RaffleWithWinner[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchPastRaffles = useCallback(async () => {
+    const fetchRaffles = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -23,50 +23,84 @@ const Raffles: React.FC = () => {
             const q = query(rafflesRef, 
                 where('event_code', '==', EVENT_CODE),
                 where('org_id', '==', ORG_UUID),
-                where('status', '==', 'Drawn'),
                 orderBy('drawn_at', 'desc')
             );
             const querySnapshot = await getDocs(q);
 
             const rafflesData = querySnapshot.docs.map(doc => {
                  const data = doc.data();
-                 // Duck-typing to check for Firestore Timestamp object to avoid TS build error
                  const drawnAt = data.drawn_at && typeof data.drawn_at.toDate === 'function'
                     ? data.drawn_at.toDate().toISOString()
-                    : new Date().toISOString();
+                    : null;
                  return { id: doc.id, ...data, drawn_at: drawnAt } as Raffle;
             });
 
-            // Fetch winner details for each raffle
-            const pastRafflesWithWinners: PastRaffle[] = await Promise.all(
+            const rafflesWithWinners: RaffleWithWinner[] = await Promise.all(
                 rafflesData.map(async (raffle) => {
                     let winnerData: Pick<Lead, 'name' | 'company'> | null = null;
                     if (raffle.winner_lead_id) {
-                        const winnerRef = doc(db, 'leads', raffle.winner_lead_id);
-                        const winnerSnap = await getDoc(winnerRef);
-                        if (winnerSnap.exists()) {
-                            winnerData = {
-                                name: winnerSnap.data().name,
-                                company: winnerSnap.data().company,
-                            };
+                        try {
+                            const winnerRef = doc(db, 'leads', raffle.winner_lead_id);
+                            const winnerSnap = await getDoc(winnerRef);
+                            if (winnerSnap.exists()) {
+                                winnerData = {
+                                    name: winnerSnap.data().name,
+                                    company: winnerSnap.data().company,
+                                };
+                            }
+                        } catch (e) {
+                            console.warn(`Could not fetch winner for raffle ${raffle.id}`, e)
                         }
                     }
                     return { ...raffle, winner: winnerData };
                 })
             );
             
-            setPastRaffles(pastRafflesWithWinners);
+            setRaffles(rafflesWithWinners);
         } catch (err: any) {
             console.error("Error fetching past raffles:", err);
-            setError("Could not load past raffle data. Please check the console for details.");
+            setError("Could not load raffle data. Please check the console for details.");
         } finally {
             setLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        fetchPastRaffles();
-    }, [fetchPastRaffles]);
+        fetchRaffles();
+    }, [fetchRaffles]);
+
+    const handleDelete = async (raffleId: string) => {
+      if (!window.confirm('¿Eliminar este sorteo permanentemente? Esta acción no se puede deshacer.')) return;
+      
+      const originalRaffles = [...raffles];
+      // Optimistic update
+      setRaffles(rs => rs.filter(r => r.id !== raffleId));
+      
+      try {
+        await deleteRaffle(raffleId);
+      } catch (err) {
+        console.error("Failed to delete raffle:", err);
+        alert("Could not delete the raffle. Restoring list.");
+        setRaffles(originalRaffles);
+      }
+    };
+    
+    const handleDraw = async (raffle: RaffleWithWinner) => {
+        if (!window.confirm(`¿Sortear un ganador para "${raffle.prize}" ahora?`)) return;
+        setLoading(true);
+        try {
+            const winner = await drawWinner(raffle);
+            if(winner) {
+                alert(`¡El ganador es ${winner.name}! La lista se actualizará.`);
+            }
+            await fetchRaffles(); // Refresh the whole list to show the new winner
+        } catch (err: any) {
+            console.error(err);
+            setError(err.message || "Failed to draw a winner.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <div className="mx-auto max-w-6xl">
@@ -75,29 +109,29 @@ const Raffles: React.FC = () => {
                 <p className="text-gray-500 dark:text-gray-400 mt-2">Manage prize draws transparently.</p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div>
-                    <RafflePanel onRaffleDrawn={fetchPastRaffles} />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-1">
+                    <RafflePanel onRaffleDrawn={fetchRaffles} />
                 </div>
-                <div>
+                <div className="lg:col-span-2">
                     <Card>
-                        <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">Raffle History</h2>
-                        {loading && <p className="text-gray-500 dark:text-gray-400">Loading history...</p>}
-                        {error && <p className="text-red-500 text-sm">{error}</p>}
-                        {!loading && pastRaffles.length === 0 && (
-                            <p className="text-gray-500 dark:text-gray-400 text-center py-8">No raffles have been drawn yet.</p>
+                        <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">All Raffles</h2>
+                        {loading && <div className="text-center p-8"><LoaderCircle className="animate-spin inline-block mr-2" />Loading raffles...</div>}
+                        {error && <p className="text-red-500 text-sm text-center p-4 bg-red-100 dark:bg-red-900/50 rounded-lg">{error}</p>}
+                        
+                        {!loading && raffles.length === 0 && (
+                            <p className="text-gray-500 dark:text-gray-400 text-center py-8">No raffles have been created yet.</p>
                         )}
-                        {!loading && pastRaffles.length > 0 && (
-                            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                                {pastRaffles.map(raffle => (
-                                    <div key={raffle.id} className="bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">{new Date(raffle.drawn_at).toLocaleString()}</p>
-                                        <p className="font-semibold text-gray-900 dark:text-white mt-1">Prize: <span className="text-blue-600 dark:text-blue-400">{raffle.prize}</span></p>
-                                        <div className="mt-2 text-sm">
-                                            <p className="text-gray-800 dark:text-gray-200">Winner: <span className="font-bold">{raffle.winner?.name || 'N/A'}</span></p>
-                                            <p className="text-gray-600 dark:text-gray-300">Company: {raffle.winner?.company || 'N/A'}</p>
-                                        </div>
-                                    </div>
+                        
+                        {!loading && raffles.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {raffles.map(raffle => (
+                                    <RaffleCard
+                                      key={raffle.id}
+                                      raffle={raffle}
+                                      onDelete={handleDelete}
+                                      onDraw={handleDraw}
+                                    />
                                 ))}
                             </div>
                         )}
