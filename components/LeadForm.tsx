@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
+
+import React, { useState, FormEvent, useMemo } from 'react';
+import { db } from '../lib/supabaseClient';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ORG_UUID, EVENT_CODE, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
 import { generateWelcomeMessage } from '../lib/geminiService';
-import { getTvChannel } from '../lib/broadcastService';
-import { hasGemini } from '../lib/ai';
 import { emitTvEvent } from '../lib/tvBus';
-import { CheckCircle, LoaderCircle } from 'lucide-react';
+import { CheckCircle, LoaderCircle, PartyPopper, RefreshCw } from 'lucide-react';
+import { hasGemini } from '../lib/ai';
+
 
 interface LeadFormProps {
   onSuccess: (lead: Lead) => void;
@@ -15,149 +16,119 @@ interface LeadFormProps {
   successLead: Lead | null;
 }
 
-const initialFormData: Partial<Lead> = {
-  source: 'MANUAL',
-  day: new Date(EVENT_DATES.split(',')[0]).getUTCDate(),
-  slot: 'AM',
-  role: 'Guia',
-  interest: 'Ambos',
-  next_step: 'Condiciones',
-  scoring: 'B',
+const getCurrentEventDay = () => {
+    const today = new Date().getUTCDate();
+    const eventDays = (EVENT_DATES as string).split(',').map(d => new Date(d.trim()).getUTCDate());
+    return eventDays.find(d => d === today) || eventDays[0] || new Date().getUTCDate();
+};
+
+const getCurrentSlot = (): 'AM' | 'PM' => {
+    const hour = new Date().getUTCHours(); // Using UTC for consistency
+    return hour < 12 ? 'AM' : 'PM';
 };
 
 export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successLead }) => {
-  const [formData, setFormData] = useState<Partial<Lead>>(initialFormData);
+  const initialFormData: Omit<Lead, 'id' | 'created_at' | 'org_id' | 'event_code' | 'day' | 'slot' | 'source'> = {
+    name: '',
+    company: '',
+    role: 'Guia',
+    whatsapp: '',
+    email: '',
+    interest: 'Ambos',
+  };
+  const [formData, setFormData] = useState(initialFormData);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (successLead) {
-      const timer = setTimeout(() => {
-        onReset();
-        setFormData(initialFormData);
-        setIsLoading(false);
-        setError(null);
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [successLead, onReset]);
-
+  const canSubmit = useMemo(() => {
+    return formData.name.trim().length > 2 && (formData.whatsapp?.trim() || formData.email?.trim());
+  }, [formData]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.whatsapp) {
-      setError("Name and WhatsApp are required.");
-      return;
-    }
+    if (!canSubmit || isLoading) return;
+
     setIsLoading(true);
     setError(null);
 
-    const leadPayload: Omit<Lead, 'id' | 'created_at'> = {
+    const newLeadData: Omit<Lead, 'id' | 'created_at'> = {
+      ...formData,
       org_id: ORG_UUID,
       event_code: EVENT_CODE,
-      source: formData.source || 'MANUAL',
-      day: Number(formData.day),
-      slot: formData.slot || 'AM',
-      name: formData.name,
-      company: formData.company || '',
-      role: formData.role || 'Otro',
-      channel: formData.channel || formData.role || 'Otro',
-      whatsapp: formData.whatsapp.replace(/\D/g, ''),
-      email: formData.email || '',
-      interest: formData.interest || 'Ambos',
-      next_step: formData.next_step || 'Condiciones',
-      scoring: formData.scoring || 'C',
-      owner: formData.owner || '',
-      notes: formData.notes || '',
-      tags: [],
+      source: 'MANUAL',
+      day: getCurrentEventDay(),
+      slot: getCurrentSlot(),
     };
 
     try {
-      const docRef = await addDoc(collection(db, 'leads'), {
-        ...leadPayload,
-        created_at: serverTimestamp(),
-      });
-
-      const newLead: Lead = {
-        id: docRef.id,
-        created_at: new Date().toISOString(),
-        ...leadPayload,
-      };
+      const docRef = await addDoc(collection(db, 'leads'), { ...newLeadData, created_at: serverTimestamp() });
+      const createdLead: Lead = { ...newLeadData, id: docRef.id, created_at: new Date().toISOString() };
+      
+      onSuccess(createdLead);
+      setFormData(initialFormData); // Reset form after success
 
       if (hasGemini()) {
-        const welcomeMessage = await generateWelcomeMessage(newLead);
-        
-        const eventPayload = {
-          lead: { id: newLead.id, name: newLead.name, company: newLead.company, notes: newLead.notes },
-          welcomeMessage: welcomeMessage,
-        };
-
-        // Primary: Firestore (multi-device)
-        await emitTvEvent(eventPayload);
-
-        // Secondary optimization (same-device)
-        const channel = getTvChannel();
-        if (channel) {
-          channel.postMessage(eventPayload);
-        }
+        const welcomeMessage = await generateWelcomeMessage(createdLead);
+        await emitTvEvent({
+          lead: {
+            id: createdLead.id,
+            name: createdLead.name,
+            company: createdLead.company
+          },
+          welcomeMessage,
+        });
       }
-      
-      onSuccess(newLead);
-
     } catch (err: any) {
-      console.error("Error adding lead:", err);
-      setError("Failed to save lead. Please check console for details and ensure Firestore rules allow 'create' on the 'leads' collection.");
+      console.error("Error saving lead:", err);
+      setError("Could not save the lead. Please check the console for details.");
+    } finally {
       setIsLoading(false);
     }
   };
 
   if (successLead) {
     return (
-      <div className="text-center p-8 flex flex-col items-center justify-center h-full animate-fade-in">
-        <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Lead Captured!</h2>
-        <p className="text-gray-600 dark:text-gray-400 mt-2">
-          {successLead.name} from {successLead.company} has been successfully registered.
+      <div className="flex flex-col items-center justify-center text-center h-full animate-fade-in">
+        <PartyPopper className="h-16 w-16 text-green-500 mb-4" />
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">¡Registro Exitoso!</h2>
+        <p className="text-gray-600 dark:text-gray-300 mt-2">
+          ¡Bienvenido, <span className="font-semibold">{successLead.name}</span>! Gracias por registrarte.
         </p>
-         <p className="text-sm text-gray-500 dark:text-gray-400 mt-6">
-          Returning to form automatically...
-        </p>
+        <button
+          onClick={onReset}
+          className="mt-6 inline-flex items-center justify-center rounded-lg px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors"
+        >
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Registrar a alguien más
+        </button>
       </div>
     );
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid md:grid-cols-2 gap-4">
+      <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">Lead Capture</h2>
+      <p className="text-sm text-gray-500 dark:text-gray-400 -mt-4 mb-6">Complete the form to register a new attendee.</p>
+      
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="label">Name*</label>
-          <input name="name" onChange={handleChange} value={formData.name || ''} className="input" required />
+          <label htmlFor="name" className="label">Full Name</label>
+          <input id="name" name="name" type="text" value={formData.name} onChange={handleChange} className="input" required />
         </div>
         <div>
-          <label className="label">Company</label>
-          <input name="company" onChange={handleChange} value={formData.company || ''} className="input" />
-        </div>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <label className="label">WhatsApp*</label>
-          <input name="whatsapp" type="tel" onChange={handleChange} value={formData.whatsapp || ''} className="input" placeholder="+50612345678" required />
-        </div>
-        <div>
-          <label className="label">Email</label>
-          <input name="email" type="email" onChange={handleChange} value={formData.email || ''} className="input" />
+          <label htmlFor="company" className="label">Company (optional)</label>
+          <input id="company" name="company" type="text" value={formData.company} onChange={handleChange} className="input" />
         </div>
       </div>
 
       <div>
-        <label className="label">Role</label>
-        <select name="role" onChange={handleChange} value={formData.role || ''} className="input">
+        <label htmlFor="role" className="label">Role</label>
+        <select id="role" name="role" value={formData.role} onChange={handleChange} className="input">
           <option>Guia</option>
           <option>Agencia</option>
           <option>Hotel</option>
@@ -166,19 +137,49 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
           <option>Otro</option>
         </select>
       </div>
-      
-      <div className="pt-4">
-        <button type="submit" disabled={isLoading} className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 flex items-center justify-center">
-          {isLoading ? (
-            <>
-              <LoaderCircle className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
-              Saving...
-            </>
-          ) : 'Capture Lead'}
-        </button>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="whatsapp" className="label">WhatsApp (optional)</label>
+          <input id="whatsapp" name="whatsapp" type="tel" value={formData.whatsapp || ''} onChange={handleChange} placeholder="+50612345678" className="input" />
+        </div>
+        <div>
+          <label htmlFor="email" className="label">Email (optional)</label>
+          <input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} className="input" />
+        </div>
       </div>
+       <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">Please provide at least a WhatsApp number or an email.</p>
+
+      <div>
+        <label htmlFor="interest" className="label">Interest</label>
+        <select id="interest" name="interest" value={formData.interest} onChange={handleChange} className="input">
+          <option>Tour</option>
+          <option>Traslado</option>
+          <option>Ambos</option>
+        </select>
+      </div>
+      
       {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-      <style>{`.label { @apply block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1; }`}</style>
+
+      <button type="submit" disabled={!canSubmit || isLoading} className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-all flex items-center justify-center">
+        {isLoading ? (
+          <>
+            <LoaderCircle className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
+            Saving...
+          </>
+        ) : (
+          <>
+            <CheckCircle className="mr-2 h-5 w-5" />
+            Register Lead
+          </>
+        )}
+      </button>
+
+       <style>{`
+        .label { @apply block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1; }
+        @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+        .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+      `}</style>
     </form>
   );
 };
