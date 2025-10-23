@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { collection, doc, updateDoc, query, where, orderBy, limit, startAfter, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
 import { createPortal } from 'react-dom';
 import { db } from '../lib/supabaseClient';
-import { EVENT_CODE } from '../lib/config';
+import { EVENT_CODE, WHATSAPP } from '../lib/config';
 import type { Lead } from '../types';
 import Card from '../components/Card';
 import LeadDetailModal from '../components/LeadDetailModal';
 import { useAuth } from '../contexts/AuthContext';
-import { sendWhatsApp, isReady } from '../services/messaging';
-import { WHATSAPP } from '../lib/config';
-import { Mail, MessageSquare, CheckCircle2, MoreVertical, Calendar, Phone, Send, Plane, Clock, LoaderCircle, Search, UserPlus, Trash2 } from 'lucide-react';
+import { sendWhatsAppVia } from '../services/messaging';
+import { getResolvedWhatsAppText } from '../lib/templates';
+import { Mail, MessageSquare, CheckCircle2, MoreVertical, Calendar, Phone, Send, Plane, Clock, LoaderCircle, Search, UserPlus, Trash2, Bot } from 'lucide-react';
 
 // Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
 function asDate(x: any): Date | null {
@@ -51,11 +51,6 @@ function resolveLeadPhone(lead: AnyLead): string | undefined {
   return undefined;
 }
 
-function normPhone(p?: string) {
-  if (!p) return '';
-  return p.replace(/[()\-\s]/g, '').trim();
-}
-
 // Mapeo de Metadatos de Siguiente Paso
 const NEXT_STEP_META: Record<string, { icon: React.ComponentType<any>; label: string }> = {
   Condiciones: { icon: Send, label: 'Enviar Condiciones' },
@@ -71,6 +66,8 @@ const LeadList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [sendingMessage, setSendingMessage] = useState<Record<string, boolean>>({});
+
 
   // Filtros persistentes
   const [filterStatus, setFilterStatus] = useState<string>(() => localStorage.getItem('lead_filter_status') || '');
@@ -99,7 +96,7 @@ const LeadList: React.FC = () => {
   const availableChannels = useMemo(() => {
     const allKnownChannels = new Set<string>();
     leads.forEach(l => {
-      if(l.channel) allKnownChannels.add(l.channel);
+      if(l.role) allKnownChannels.add(l.role);
     });
     // Add roles as potential channels
     ['Guia', 'Agencia', 'Hotel', 'Mayorista', 'Transportista', 'Otro'].forEach(r => allKnownChannels.add(r));
@@ -211,23 +208,47 @@ const LeadList: React.FC = () => {
     }
   };
   
+  const handleSendWhatsApp = async (provider: 'wa' | 'builderbot', lead: AnyLead) => {
+    const messageKey = `${lead.id}-${provider}`;
+    setSendingMessage(prev => ({ ...prev, [messageKey]: true }));
+    try {
+        const toRaw = resolveLeadPhone(lead) || WHATSAPP;
+        if (!toRaw) {
+            alert('No phone available for WhatsApp.');
+            return;
+        }
+        const text = await getResolvedWhatsAppText(lead);
+        if (!text) {
+            alert('WhatsApp template is empty for this lead category.');
+            return;
+        }
+        await sendWhatsAppVia(provider, { to: toRaw, text, leadId: lead.id });
+        if (provider === 'builderbot') alert('Message sent via BuilderBot!');
+    } catch (err) {
+        console.error(err);
+        alert(`Could not send WhatsApp via ${provider}.`);
+    } finally {
+        setSendingMessage(prev => ({ ...prev, [messageKey]: false }));
+    }
+};
+
   const renderActions = (lead: AnyLead) => (
      <div className="flex items-center gap-1">
         <button
           className="action-btn"
           title="WhatsApp" aria-label="WhatsApp"
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const toRaw = resolveLeadPhone(lead) || WHATSAPP;
-              if (!toRaw) { alert('No phone available for WhatsApp.'); return; }
-              const to = normPhone(toRaw);
-              const text = `Hi ${(lead.name || '').split(' ')[0] || 'there'}, thanks for visiting our stand today! This is ${lead.company || 'our team'}. Let us know if you'd like a quick call or a tailored proposal.`;
-              await sendWhatsApp({ to, text, leadId: lead.id });
-            } catch (err) { console.error(err); alert('Could not send WhatsApp.'); }
-          }}
+          disabled={sendingMessage[`${lead.id}-wa`]}
+          onClick={(e) => { e.stopPropagation(); handleSendWhatsApp('wa', lead); }}
         >
-          <MessageSquare className="w-4 h-4" />
+          {sendingMessage[`${lead.id}-wa`] ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+        </button>
+        <button
+          className="action-btn"
+          title="BuilderBot" aria-label="BuilderBot"
+          disabled={sendingMessage[`${lead.id}-builderbot`]}
+          onClick={(e) => { e.stopPropagation(); handleSendWhatsApp('builderbot', lead); }}
+        >
+          {sendingMessage[`${lead.id}-builderbot`] ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
         </button>
         <button
           className="action-btn"
@@ -240,20 +261,6 @@ const LeadList: React.FC = () => {
           }}
         >
           <Mail className="w-4 h-4" />
-        </button>
-        <button
-          className="action-btn"
-          title="Mark done" aria-label="Mark done"
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const nextStatus = lead.status === 'NEW' ? 'CONTACTED' : (lead.status || 'CONTACTED');
-              await updateDoc(doc(db, 'leads', lead.id), { status: nextStatus, next_step: null, updated_at: Timestamp.now() });
-              handleUpdateLeadState(lead.id, { status: nextStatus, next_step: undefined });
-            } catch (err) { console.error(err); }
-          }}
-        >
-          <CheckCircle2 className="w-4 h-4" />
         </button>
         <div className="relative">
           <button
@@ -428,7 +435,7 @@ const LeadList: React.FC = () => {
     <div className="mx-auto max-w-7xl">
        <style>{`
         .th { @apply px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider; }
-        .action-btn { @apply inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400; }
+        .action-btn { @apply inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50 disabled:cursor-wait; }
        `}</style>
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <div className="text-center md:text-left">

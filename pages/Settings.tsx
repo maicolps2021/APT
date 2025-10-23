@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db, storage } from '../lib/supabaseClient';
-import { collection, doc, getDocs, setDoc, query, where } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, query, where, getDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, listAll, uploadBytesResumable, getDownloadURL, uploadString } from 'firebase/storage';
 import { ORG_UUID, EVENT_CODE, TV_PREFIX, EVENT_DATES, WHATSAPP } from '../lib/config';
 import Card from '../components/Card';
@@ -8,12 +8,6 @@ import { TVItem } from '../lib/tv';
 import { LoaderCircle, Upload, Plus, Trash2, GripVertical, FileVideo, FileImage, CheckCircle, XCircle } from 'lucide-react';
 import { hasGemini } from '../lib/ai';
 import { hasBuilderBot } from '../services/builderbotService';
-
-interface MessageTemplate {
-    id: string;
-    channel: string;
-    template: string;
-}
 
 const leadChannels = ['Guia', 'Agencia', 'Hotel', 'Mayorista', 'Transportista', 'Otro'];
 
@@ -30,7 +24,7 @@ const StatusPill: React.FC<{ status: boolean }> = ({ status }) => (
 const Settings: React.FC = () => {
     const [mediaFiles, setMediaFiles] = useState<string[]>([]);
     const [playlist, setPlaylist] = useState<TVItem[]>([]);
-    const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+    const [templates, setTemplates] = useState<Record<string, string>>({});
     const [loadingMedia, setLoadingMedia] = useState(true);
     const [loadingPlaylist, setLoadingPlaylist] = useState(true);
     const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -79,15 +73,18 @@ const Settings: React.FC = () => {
     const fetchTemplates = useCallback(async () => {
         setLoadingTemplates(true);
         try {
-            const templatesRef = collection(db, 'message_templates');
-            const q = query(templatesRef, where('org_id', '==', ORG_UUID), where('event_code', '==', EVENT_CODE));
-            const querySnapshot = await getDocs(q);
-            const fetchedTemplates = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MessageTemplate));
+            const docRef = doc(db, 'orgs', ORG_UUID, 'settings', 'whatsapp_templates');
+            const docSnap = await getDoc(docRef);
+
+            const fetchedTemplates: Record<string, string> = docSnap.exists() ? docSnap.data() : {};
             
-            const allTemplates = leadChannels.map(channel => {
-                const existing = fetchedTemplates.find(t => t.channel === channel);
-                return existing || { id: channel, channel, template: '' };
+            // Ensure all channels have an entry in the state for the UI
+            const allTemplates: Record<string, string> = {};
+            leadChannels.forEach(channel => {
+                const key = channel.toLowerCase();
+                allTemplates[key] = fetchedTemplates[key] || '';
             });
+
             setTemplates(allTemplates);
         } catch (err) {
             console.error("Error fetching templates:", err);
@@ -160,17 +157,12 @@ const Settings: React.FC = () => {
     const handleSaveTemplates = async () => {
         setIsSavingTemplates(true);
         try {
-            for (const template of templates) {
-                if (template.template.trim()) {
-                    const docRef = doc(db, 'message_templates', `${ORG_UUID}_${EVENT_CODE}_${template.channel}`);
-                    await setDoc(docRef, {
-                        org_id: ORG_UUID,
-                        event_code: EVENT_CODE,
-                        channel: template.channel,
-                        template: template.template
-                    }, { merge: true });
-                }
-            }
+            const docRef = doc(db, 'orgs', ORG_UUID, 'settings', 'whatsapp_templates');
+            await setDoc(docRef, {
+                ...templates,
+                updated_at: serverTimestamp()
+            }, { merge: true });
+
             alert("Templates saved successfully!");
         } catch (err) {
             console.error("Error saving templates:", err);
@@ -211,8 +203,8 @@ const Settings: React.FC = () => {
         setPlaylist(newPlaylist);
     };
 
-    const handleTemplateChange = (channel: string, value: string) => {
-        setTemplates(prev => prev.map(t => t.channel === channel ? { ...t, template: value } : t));
+    const handleTemplateChange = (channelKey: string, value: string) => {
+        setTemplates(prev => ({ ...prev, [channelKey]: value }));
     };
 
 
@@ -342,17 +334,17 @@ const Settings: React.FC = () => {
 
             <Card>
                 <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">WhatsApp Message Templates</h2>
-                <p className="text-sm text-gray-500 mb-4">Customize the message sent for each lead category. Use <code className="bg-gray-200 dark:bg-gray-700 p-1 rounded text-xs">{'{nombre}'}</code> as a placeholder for the lead's first name.</p>
+                <p className="text-sm text-gray-500 mb-4">Customize the message sent for each lead category. Use <code className="bg-gray-200 dark:bg-gray-700 p-1 rounded text-xs">{'{{nombre}}'}</code> as a placeholder for the lead's first name.</p>
                 {loadingTemplates ? <p>Loading templates...</p> : (
                     <div className="space-y-4">
-                        {templates.map(template => (
-                            <div key={template.channel}>
-                                <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">{template.channel}</label>
+                        {leadChannels.map(channel => (
+                            <div key={channel}>
+                                <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">{channel}</label>
                                 <textarea
-                                    value={template.template}
-                                    onChange={(e) => handleTemplateChange(template.channel, e.target.value)}
+                                    value={templates[channel.toLowerCase()] || ''}
+                                    onChange={(e) => handleTemplateChange(channel.toLowerCase(), e.target.value)}
                                     className="input w-full min-h-[80px]"
-                                    placeholder={`Default message for ${template.channel}`}
+                                    placeholder={`Default message for ${channel}`}
                                 />
                             </div>
                         ))}

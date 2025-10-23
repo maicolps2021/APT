@@ -4,6 +4,7 @@ import { db } from '../lib/supabaseClient';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { EVENT_CODE, WHATSAPP } from '../lib/config';
 import { sendWhatsAppVia, providerName } from '../services/messaging';
+import { getResolvedWhatsAppText } from '../lib/templates';
 import { X, Save, MessageSquare, Mail, LoaderCircle, Bot } from 'lucide-react';
 
 // Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
@@ -64,12 +65,6 @@ interface LeadDetailModalProps {
   onClose: () => void;
 }
 
-function buildWaText(lead: Lead) {
-  const first = (lead.name || '').split(' ')[0] || 'there';
-  const org  = lead.company || 'our team';
-  return `Hi ${first}, thanks for visiting our stand today! This is ${org}. Let us know if you'd like a quick call or a tailored proposal.`;
-}
-
 const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose }) => {
   const [formData, setFormData] = useState({
     scoring: lead.scoring || 'C',
@@ -78,6 +73,7 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
     notes: lead.notes || '',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -131,6 +127,32 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
       setIsSaving(false);
     }
   };
+
+  const handleSendWhatsApp = async (provider: 'wa' | 'builderbot') => {
+    setIsSending(true);
+    try {
+        const toRaw = resolveLeadPhone(lead as AnyLead) || WHATSAPP;
+        if (!toRaw) {
+            alert('No phone available for this lead.');
+            return;
+        }
+        const text = await getResolvedWhatsAppText(lead);
+        if (!text) {
+            alert('WhatsApp template is empty for this lead category. Please configure it in Settings.');
+            return;
+        }
+        await sendWhatsAppVia(provider, { to: toRaw, text, leadId: lead.id });
+        if (provider === 'builderbot') {
+            alert('WhatsApp sent via BuilderBot ✅');
+        }
+    } catch (e) {
+        console.error(e);
+        alert(`Could not send via ${provider}. Check credentials or phone number.`);
+    } finally {
+        setIsSending(false);
+    }
+  };
+
 
   if (!isOpen) return null;
 
@@ -186,21 +208,10 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
                     title="Send via BuilderBot"
                     aria-label="Send via BuilderBot"
                     className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-60"
-                    onClick={async () => {
-                    try {
-                        const toRaw = resolveLeadPhone(lead as AnyLead) || WHATSAPP;
-                        if (!toRaw) { alert('No phone available.'); return; }
-                        const text = buildWaText(lead);
-                        await sendWhatsAppVia('builderbot', { to: toRaw, text, leadId: lead.id });
-                        alert('WhatsApp sent via BuilderBot ✅');
-                    } catch (e) {
-                        console.error(e);
-                        alert('Could not send via BuilderBot. Check credentials or phone.');
-                    }
-                    }}
-                    disabled={providerName() === 'none'}
+                    onClick={() => handleSendWhatsApp('builderbot')}
+                    disabled={providerName() === 'none' || isSending}
                 >
-                    <Bot className="w-5 h-5" />
+                    {isSending ? <LoaderCircle className="w-5 h-5 animate-spin"/> : <Bot className="w-5 h-5" />}
                     BuilderBot
                 </button>
 
@@ -208,20 +219,11 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
                     type="button"
                     title="Open WhatsApp link"
                     aria-label="Open WhatsApp link"
-                    className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400"
-                    onClick={async () => {
-                    try {
-                        const toRaw = resolveLeadPhone(lead as AnyLead) || WHATSAPP;
-                        if (!toRaw) { alert('No phone available.'); return; }
-                        const text = buildWaText(lead);
-                        await sendWhatsAppVia('wa', { to: toRaw, text, leadId: lead.id });
-                    } catch (e) {
-                        console.error(e);
-                        alert('Could not open WhatsApp link.');
-                    }
-                    }}
+                    className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60"
+                    onClick={() => handleSendWhatsApp('wa')}
+                    disabled={isSending}
                 >
-                    <MessageSquare className="w-5 h-5" />
+                   {isSending ? <LoaderCircle className="w-5 h-5 animate-spin"/> : <MessageSquare className="w-5 h-5" />}
                     WhatsApp
                 </button>
                 

@@ -1,70 +1,41 @@
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from './supabaseClient';
+import { ORG_UUID } from './config';
 import type { Lead } from '../types';
-import { db } from './supabaseClient'; // Path kept for simplicity, points to Firebase now
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { ORG_UUID, EVENT_CODE } from './config';
 
-/**
- * Fetches the personalized WhatsApp message template from the database based on the lead's role.
- * Falls back to a generic message if no template is found.
- * @param lead The lead object.
- * @returns A promise that resolves to the personalized message string.
- */
-export const getPersonalizedWhatsAppMessage = async (lead: Lead): Promise<string> => {
-    const name = lead.name.split(' ')[0]; // Use first name
-    const fallbackMessage = `¡Hola ${name}! Gracias por visitarnos en el stand de Arenal Private Tours by Small Groups. En breve te enviaremos la información de colaborador a tu correo. ¡Saludos!`;
 
-    if (!lead.role) {
-        return fallbackMessage;
+export type LeadCategory = 'guia'|'agencia'|'hotel'|'mayorista'|'transportista'|'otro';
+
+export async function loadWATemplates(orgId: string): Promise<Record<string,string>> {
+  const snap = await getDoc(doc(db, 'orgs', orgId, 'settings', 'whatsapp_templates'));
+  const data = (snap.exists() ? snap.data() : {}) as Record<string, string>;
+  return data;
+}
+
+export function pickTemplate(templates: Record<string,string>, category?: string): string {
+  const key = (category || '').toLowerCase();
+  return (templates[key] || templates['otro'] || '').trim();
+}
+
+export function renderTemplate(tpl: string, vars: Record<string,string>) {
+  return tpl.replace(/\{\{(\w+)\}\}/g, (_,k) => (vars[k] ?? ''));
+}
+
+
+export async function getResolvedWhatsAppText(lead: Lead): Promise<string> {
+    const orgId = lead.org_id || ORG_UUID;
+    if (!orgId) return '';
+    
+    const templates = await loadWATemplates(orgId);
+    const category = lead.role?.toLowerCase();
+    const tpl = pickTemplate(templates, category);
+    
+    const firstName = (lead.name || '').split(' ')[0] || 'there';
+    
+    // Fallback if no template is found or the found template is empty
+    if (!tpl) {
+        return `Hi ${firstName}, thanks for visiting our stand today! This is ${lead.company || 'our team'}. Let us know if you'd like a quick call or a tailored proposal.`;
     }
-
-    try {
-        const templatesRef = collection(db, 'message_templates');
-        const q = query(templatesRef,
-            where('org_id', '==', ORG_UUID),
-            where('event_code', '==', EVENT_CODE),
-            where('channel', '==', lead.role)
-        );
-        const querySnapshot = await getDocs(q);
-
-        if (querySnapshot.empty) {
-            console.warn(`No template found for role: ${lead.role}. Using fallback.`);
-            return fallbackMessage;
-        }
-        
-        const templateDoc = querySnapshot.docs[0].data();
-
-        if (!templateDoc || !templateDoc.template) {
-            return fallbackMessage;
-        }
-
-        return templateDoc.template.replace(/\{nombre\}/g, name);
-
-    } catch (err) {
-        console.error("Error fetching message template:", err);
-        return fallbackMessage;
-    }
-};
-
-
-/**
- * Generates a pre-filled email (mailto) link for a given lead.
- * @param lead The lead object containing contact details.
- * @returns A string for a mailto: link.
- */
-export const generateEmailLink = (lead: Lead): string => {
-    if (!lead.email) return '#';
-    const name = lead.name.split(' ')[0];
-    const subject = encodeURIComponent(`Propuesta Colaborador Arenal Private Tours by Small Groups para ${lead.company || lead.name}`);
-    const body = encodeURIComponent(`Estimado/a ${name},
-
-Un placer saludarte.
-
-Adjunto a este correo encontrarás nuestras condiciones y tarifas para colaboradores. Estamos a tu disposición para cualquier consulta.
-
-¡Gracias por tu interés en Arenal Private Tours by Small Groups!
-
-Saludos cordiales,
-El equipo de Arenal Private Tours by Small Groups
-`);
-    return `mailto:${lead.email}?subject=${subject}&body=${body}`;
-};
+    
+    return renderTemplate(tpl, { nombre: firstName });
+}
