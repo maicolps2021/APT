@@ -14,9 +14,12 @@ interface RafflePanelProps {
 const RafflePanel: React.FC<RafflePanelProps> = ({ onRaffleDrawn }) => {
   const [prize, setPrize] = useState('');
   const eventDays = useMemo<number[]>(() => {
-    const dates = EVENT_DATES.split(',').map(d => new Date(d.trim()).getUTCDate());
-    // FIX: Explicitly cast sort comparison values to Number to resolve arithmetic operation type error.
-    return [...new Set(dates)].sort((a,b)=> Number(a) - Number(b));
+    // FIX: Explicitly cast EVENT_DATES to string and ensure map returns numbers to satisfy TS.
+    const dates = (EVENT_DATES as string).split(',').map(d => {
+        const date = new Date(String(d).trim());
+        return date.getUTCDate();
+    });
+    return [...new Set(dates)].sort((a,b)=> a - b);
   }, []);
   const [selectedDay, setSelectedDay] = useState<number>(eventDays[0] || 0);
 
