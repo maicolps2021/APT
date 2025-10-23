@@ -46,13 +46,13 @@ export const RaffleCard: React.FC<RaffleCardProps> = ({ raffle, onDraw, onDelete
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-600 dark:text-gray-300">
-        <div className="flex items-center gap-2" title="Tickets (not implemented)">
+        <div className="flex items-center gap-2">
             <Ticket className="w-4 h-4 text-gray-400"/>
-            <span>{raffle.tickets_count ?? 'N/A'} tickets</span>
+            <span>{(raffle.tickets_count ?? 0).toLocaleString()} tickets</span>
         </div>
-        <div className="flex items-center gap-2" title="Participants (not implemented)">
+        <div className="flex items-center gap-2">
             <User2 className="w-4 h-4 text-gray-400"/>
-            <span>{raffle.participants_count ?? 'N/A'} participants</span>
+            <span>{(raffle.participants_count ?? 0).toLocaleString()} participants</span>
         </div>
       </div>
       

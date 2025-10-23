@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../lib/supabaseClient';
-import { collection, getDocs, doc, getDoc, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, where, orderBy, getCountFromServer } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Raffle, Lead } from '../types';
 import Card from '../components/Card';
@@ -35,8 +35,9 @@ const Raffles: React.FC = () => {
                  return { id: doc.id, ...data, drawn_at: drawnAt } as Raffle;
             });
 
-            const rafflesWithWinners: RaffleWithWinner[] = await Promise.all(
+            const rafflesWithDetails: RaffleWithWinner[] = await Promise.all(
                 rafflesData.map(async (raffle) => {
+                    // Fetch winner details
                     let winnerData: Pick<Lead, 'name' | 'company'> | null = null;
                     if (raffle.winner_lead_id) {
                         try {
@@ -52,11 +53,33 @@ const Raffles: React.FC = () => {
                             console.warn(`Could not fetch winner for raffle ${raffle.id}`, e)
                         }
                     }
-                    return { ...raffle, winner: winnerData };
+
+                    // Fetch participant counts
+                    let participantsCount = 0;
+                    try {
+                        const leadsRef = collection(db, 'leads');
+                        const qCount = query(leadsRef,
+                            where('event_code', '==', EVENT_CODE),
+                            where('org_id', '==', ORG_UUID),
+                            where('day', '==', raffle.day)
+                        );
+                        const snapCount = await getCountFromServer(qCount);
+                        participantsCount = snapCount.data().count;
+                    } catch (e) {
+                        console.warn(`Could not fetch counts for raffle ${raffle.id}`, e);
+                    }
+
+                    return { 
+                        ...raffle, 
+                        winner: winnerData,
+                        // Assuming 1 ticket per participant (lead)
+                        tickets_count: participantsCount,
+                        participants_count: participantsCount
+                    };
                 })
             );
             
-            setRaffles(rafflesWithWinners);
+            setRaffles(rafflesWithDetails);
         } catch (err: any) {
             console.error("Error fetching past raffles:", err);
             setError("Could not load raffle data. Please check the console for details.");
