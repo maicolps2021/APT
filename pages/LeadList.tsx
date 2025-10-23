@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
@@ -61,7 +62,7 @@ const LeadList: React.FC = () => {
       setLeads(prevLeads => prevLeads.filter(lead => lead.id !== leadId));
     } catch (err: any) {
       console.error("Error deleting lead:", err);
-      setError("No se pudo eliminar el lead. Por favor, inténtalo de nuevo.");
+      setError("Error al eliminar. Esto probablemente se deba a la falta de permisos en la base de datos. Asegúrate de que la 'Row Level Security' (RLS) en la tabla 'leads' permita la operación de borrado (DELETE).");
     } finally {
       setDeletingId(null);
     }

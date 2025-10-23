@@ -37,7 +37,8 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
   
     const { error } = await supabase.from("leads").insert([payload]);
     if (error) {
-      setErr(error.message);
+      console.error("Error creating lead:", error);
+      setErr("Error al guardar. Esto puede ser por falta de permisos en la base de datos. Revisa que 'Row Level Security' (RLS) en la tabla 'leads' permita la inserción (INSERT).");
       setLoading(false);
     } else {
       // Pass a simplified lead object to the success state

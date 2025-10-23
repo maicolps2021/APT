@@ -261,7 +261,7 @@ const Meetings: React.FC = () => {
         
         if (error) {
             console.error('Failed to cancel:', error);
-            alert('Error: Could not cancel the meeting. The change has been reverted.');
+            alert('Error: No se pudo cancelar la reunión. El cambio ha sido revertido. Por favor, revisa los permisos (RLS) para la operación de actualización (UPDATE) en la tabla de leads.');
             setMeetings(prev => [...prev, originalMeeting]);
         } else {
             // On success, update master leads list to make it available again
