@@ -14,17 +14,17 @@ interface LeadFormProps {
   successLead: Lead | null;
 }
 
-export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successLead }) => {
-  const initialFormData: Partial<Lead> = {
-    source: 'MANUAL',
-    day: new Date(EVENT_DATES.split(',')[0]).getUTCDate(),
-    slot: 'AM',
-    role: 'Guia',
-    interest: 'Ambos',
-    next_step: 'Condiciones',
-    scoring: 'B',
-  };
+const initialFormData: Partial<Lead> = {
+  source: 'MANUAL',
+  day: new Date(EVENT_DATES.split(',')[0]).getUTCDate(),
+  slot: 'AM',
+  role: 'Guia',
+  interest: 'Ambos',
+  next_step: 'Condiciones',
+  scoring: 'B',
+};
 
+export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successLead }) => {
   const [formData, setFormData] = useState<Partial<Lead>>(initialFormData);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,10 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
     if (successLead) {
       // Automatically reset the form after a delay
       const timer = setTimeout(() => {
-        onReset();
+        onReset(); // Hides the success message via parent state
+        setFormData(initialFormData); // Resets the form fields
+        setIsLoading(false); // Resets the button state
+        setError(null); // Clears any stale errors
       }, 4000); // 4-second delay
 
       // Clear the timer if the component unmounts or user navigates away
