@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { collection, doc, updateDoc, query, where, orderBy, limit, startAfter, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, doc, updateDoc, query, where, orderBy, limit, startAfter, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
+import { createPortal } from 'react-dom';
 import { db } from '../lib/supabaseClient';
 import { EVENT_CODE } from '../lib/config';
 import type { Lead } from '../types';
@@ -8,7 +9,7 @@ import LeadDetailModal from '../components/LeadDetailModal';
 import { useAuth } from '../contexts/AuthContext';
 import { sendWhatsApp, isReady } from '../services/messaging';
 import { WHATSAPP } from '../lib/config';
-import { Mail, MessageSquare, CheckCircle2, MoreVertical, Calendar, Phone, Send, Plane, Clock, LoaderCircle, Search, UserPlus } from 'lucide-react';
+import { Mail, MessageSquare, CheckCircle2, MoreVertical, Calendar, Phone, Send, Plane, Clock, LoaderCircle, Search, UserPlus, Trash2 } from 'lucide-react';
 
 // Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
 function asDate(x: any): Date | null {
@@ -85,6 +86,9 @@ const LeadList: React.FC = () => {
 
   // Menú de siguiente paso
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  type MenuPos = { x: number; y: number } | null;
+  const [menuPos, setMenuPos] = useState<MenuPos>(null);
+
 
   // Persistir filtros en localStorage
   useEffect(() => { localStorage.setItem('lead_filter_status', filterStatus); }, [filterStatus]);
@@ -190,6 +194,22 @@ const LeadList: React.FC = () => {
   const handleUpdateLeadState = (id: string, patch: Partial<Lead>) => {
     setLeads(ls => ls.map(l => l.id === id ? { ...l, ...patch } : l));
   };
+
+  const handleDeleteLead = async (leadId: string) => {
+    if (!window.confirm('¿Eliminar este lead definitivamente?')) return;
+    // Optimista: quita de UI primero
+    setLeads(ls => ls.filter(l => l.id !== leadId));
+    try {
+      await deleteDoc(doc(db, 'leads', leadId));
+    } catch (err) {
+      console.error(err);
+      alert('No se pudo eliminar. Recargando la lista.');
+      // (opcional) recarga o reinyecta si quieres deshacer la optimista
+    } finally {
+      setOpenMenuId(null);
+      setMenuPos(null);
+    }
+  };
   
   const renderActions = (lead: AnyLead) => (
      <div className="flex items-center gap-1">
@@ -241,27 +261,66 @@ const LeadList: React.FC = () => {
             aria-haspopup="menu" aria-expanded={openMenuId === lead.id}
             onClick={(e) => {
               e.stopPropagation();
-              setOpenMenuId(openMenuId === lead.id ? null : lead.id);
+              if (openMenuId === lead.id) {
+                setOpenMenuId(null);
+                setMenuPos(null);
+              } else {
+                const btn = e.currentTarget as HTMLElement;
+                const r = btn.getBoundingClientRect();
+                setMenuPos({ x: r.left, y: r.bottom + 4 }); // 4px de separación
+                setOpenMenuId(lead.id);
+              }
             }}>
             <MoreVertical className="w-4 h-4" />
           </button>
-          {openMenuId === lead.id && (
-            <div role="menu" className="absolute right-0 z-30 mt-2 w-48 bg-white dark:bg-gray-900 border rounded-md shadow-lg p-1" onClick={e => e.stopPropagation()}>
-              {Object.entries(NEXT_STEP_META).map(([key, meta]) => (
-                <button key={key} role="menuitem"
-                  className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded text-sm"
-                  onClick={async () => {
-                    try {
-                      await updateDoc(doc(db, 'leads', lead.id), { next_step: key, updated_at: Timestamp.now() });
-                      handleUpdateLeadState(lead.id, { next_step: key as any });
-                    } catch (err) { console.error(err); }
-                    setOpenMenuId(null);
-                  }}>
-                  <meta.icon className="w-4 h-4" /><span>{meta.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {openMenuId === lead.id && menuPos &&
+            createPortal(
+              <>
+                {/* Backdrop para cerrar al hacer click fuera */}
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => { setOpenMenuId(null); setMenuPos(null); }}
+                />
+                <div
+                  role="menu"
+                  className="fixed z-50 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md shadow-xl p-1"
+                  style={{ left: `${menuPos.x}px`, top: `${menuPos.y}px` }}
+                >
+                  {Object.entries(NEXT_STEP_META).map(([key, meta]) => {
+                    const Icon = meta.icon;
+                    return (
+                      <button
+                        key={key}
+                        role="menuitem"
+                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded text-sm text-left"
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'leads', lead.id), { next_step: key, updated_at: Timestamp.now() });
+                            handleUpdateLeadState(lead.id, { next_step: key as any });
+                          } catch (e) { console.error(e); }
+                          setOpenMenuId(null); setMenuPos(null);
+                        }}
+                      >
+                        <Icon className="w-4 h-4" /><span>{meta.label}</span>
+                      </button>
+                    );
+                  })}
+
+                  <div className="my-1 h-px bg-gray-200 dark:bg-gray-800" />
+
+                  <button
+                    role="menuitem"
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-sm text-red-600 text-left"
+                    onClick={() => handleDeleteLead(lead.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Eliminar</span>
+                  </button>
+                </div>
+              </>,
+              document.body
+            )
+          }
         </div>
       </div>
   );
@@ -300,7 +359,16 @@ const LeadList: React.FC = () => {
                     <div>{resolveLeadPhone(lead) || '—'}</div>
                 </div>
                 <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex items-center justify-between">
-                    {renderActions(lead)}
+                    <div className="flex items-center gap-1">
+                      {renderActions(lead)}
+                      <button
+                        className="action-btn text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 focus:ring-red-400"
+                        title="Eliminar" aria-label="Eliminar"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteLead(lead.id); }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                     <span className="text-xs text-gray-400">{isValidDate(createdAt) ? createdAt.toLocaleDateString() : '—'}</span>
                 </div>
                 </div>
