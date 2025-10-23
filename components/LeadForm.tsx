@@ -3,7 +3,7 @@ import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points 
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ORG_UUID, EVENT_CODE, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
-import { generateWelcomeMessage } from '../services/geminiService';
+import { generateWelcomeMessage } from '../lib/geminiService';
 import { useTVMessage } from '../contexts/TVMessageContext';
 import { CheckCircle, LoaderCircle, UserPlus } from 'lucide-react';
 import { hasGemini } from '../lib/ai';
