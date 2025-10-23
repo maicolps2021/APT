@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
-import { db } from '@/lib/supabaseClient';
+import { db } from '../lib/supabaseClient';
 import { MessageSquare, Mail, Share2, Clock } from 'lucide-react';
-import { ORG_UUID } from '@/lib/config';
 
 type Props = { orgId: string; leadId: string };
 type AnyAct = Record<string, any>;
@@ -30,7 +29,6 @@ const ActivityLog: React.FC<Props> = ({ orgId, leadId }) => {
     (async ()=>{
       setLoading(true);
       try {
-        // The collection path for activity is directly under the lead
         const col = collection(db, 'leads', leadId, 'activity');
         const snap = await getDocs(query(col, orderBy('at','desc'), limit(20)));
         setRows(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })));
@@ -42,7 +40,7 @@ const ActivityLog: React.FC<Props> = ({ orgId, leadId }) => {
   }, [orgId, leadId]);
 
   if (loading) return <div className="text-xs opacity-70 p-3">Loading activity…</div>;
-  if (!rows.length) return null; // Hide if no activity
+  if (!rows.length) return null;
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">

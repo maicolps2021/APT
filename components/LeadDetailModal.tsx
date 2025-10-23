@@ -205,10 +205,10 @@ Best regards,`);
           <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"><X className="h-5 w-5" /></button>
         </header>
 
-        <form id="lead-detail-form" onSubmit={handleSave} className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+        <form id="lead-detail-form" onSubmit={handleSave} className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-4">
-              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+               <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
                 <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Scoring</label>
                 <select name="scoring" value={formData.scoring} onChange={handleChange} className="w-full mt-1 rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-400">
                   <option value="A">A (Hot)</option><option value="B">B (Warm)</option><option value="C">C (Cold)</option>
@@ -229,9 +229,9 @@ Best regards,`);
               <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Quick Actions</h3>
                 <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => handleSendWhatsApp('builderbot')} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Send via BuilderBot"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'builderbot' ? '':'hidden'}`} /><Bot className={`w-5 h-5 ${sendingAction === 'builderbot' ? 'hidden':''}`} /> BuilderBot</button>
-                    <button type="button" onClick={() => handleSendWhatsApp('wa')} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Open WhatsApp"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'wa' ? '':'hidden'}`} /><MessageSquare className={`w-5 h-5 ${sendingAction === 'wa' ? 'hidden':''}`} /> WhatsApp</button>
-                    <a href={`mailto:${lead.email || ''}`} target="_blank" rel="noreferrer" title={!hasEmail ? "No email on record" : "Send Email"} className={`h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-blue-600 text-white hover:bg-blue-700 ${!hasEmail ? 'opacity-60 cursor-not-allowed' : ''}`}><Mail className="w-5 h-5" /> Email</a>
+                    <button type="button" onClick={() => handleSendWhatsApp('builderbot')} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Send via BuilderBot"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'builderbot' ? '':'hidden'}`} /><Bot className={`w-5 h-5 ${sendingAction === 'builderbot' ? 'hidden':''}`} /> BuilderBot</button>
+                    <button type="button" onClick={() => handleSendWhatsApp('wa')} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Open WhatsApp"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'wa' ? '':'hidden'}`} /><MessageSquare className={`w-5 h-5 ${sendingAction === 'wa' ? 'hidden':''}`} /> WhatsApp</button>
+                    <a href={`mailto:${lead.email || ''}`} target="_blank" rel="noreferrer" title={!hasEmail ? "No email on record" : "Send Email"} className={`h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-blue-600 text-white hover:bg-blue-700 ${!hasEmail ? 'opacity-60 cursor-not-allowed' : ''} focus:outline-none focus:ring-2 focus:ring-blue-400`}><Mail className="w-5 h-5" /> Email</a>
                 </div>
               </div>
                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
@@ -241,8 +241,8 @@ Best regards,`);
                     {materials.length === 0 ? <option>No materials uploaded</option> : materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
                 <div className="flex gap-2 flex-shrink-0">
-                    <button type="button" onClick={shareViaWA} disabled={!selectedMaterial || !hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Share via WhatsApp"} className="h-11 w-11 inline-flex items-center justify-center gap-2 px-3 rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'share-wa' ? '':'hidden'}`} /><MessageSquare className={`w-5 h-5 ${sendingAction === 'share-wa' ? 'hidden':''}`} /></button>
-                    <button type="button" onClick={shareViaEmail} disabled={!selectedMaterial || !hasEmail || !!sendingAction} title={!hasEmail ? "No email on record" : "Share via Email"} className="h-11 w-11 inline-flex items-center justify-center gap-2 px-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"><Mail className="w-5 h-5" /></button>
+                    <button type="button" onClick={shareViaWA} disabled={!selectedMaterial || !hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Share via WhatsApp"} className="h-11 w-11 inline-flex items-center justify-center gap-2 px-3 rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'share-wa' ? '':'hidden'}`} /><MessageSquare className={`w-5 h-5 ${sendingAction === 'share-wa' ? 'hidden':''}`} /></button>
+                    <button type="button" onClick={shareViaEmail} disabled={!selectedMaterial || !hasEmail || !!sendingAction} title={!hasEmail ? "No email on record" : "Share via Email"} className="h-11 w-11 inline-flex items-center justify-center gap-2 px-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><Mail className="w-5 h-5" /></button>
                 </div>
                 </div>
                 {materials.length === 0 && (
@@ -254,15 +254,15 @@ Best regards,`);
               <ActivityLog orgId={orgId} leadId={lead.id} />
             </div>
           </div>
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+          <div className="mt-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
             <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Notes</label>
             <textarea name="notes" value={formData.notes} onChange={handleChange} rows={4} className="w-full mt-1 rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-400" />
           </div>
         </form>
         
         <footer className="flex justify-end gap-2 p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 rounded-b-2xl">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl border hover:bg-gray-50 dark:hover:bg-gray-800">Cancel</button>
-          <button type="submit" form="lead-detail-form" disabled={isSaving} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl border hover:bg-gray-50 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-400">Cancel</button>
+          <button type="submit" form="lead-detail-form" disabled={isSaving} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-blue-400">
             {isSaving ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Changes
           </button>
         </footer>
