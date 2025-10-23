@@ -2,10 +2,11 @@ import React, { useState, useEffect, FormEvent } from 'react';
 import type { Lead } from '../types';
 import { db } from '../lib/supabaseClient';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { EVENT_CODE, WHATSAPP } from '../lib/config';
+import { ORG_UUID, WHATSAPP } from '../lib/config';
 import { sendWhatsAppVia, providerName } from '../services/messaging';
 import { getResolvedWhatsAppText } from '../lib/templates';
-import { X, Save, MessageSquare, Mail, LoaderCircle, Bot } from 'lucide-react';
+import { loadMaterials, Material, logShare } from '../lib/materials';
+import { X, Save, MessageSquare, Mail, LoaderCircle, Bot, Share2 } from 'lucide-react';
 
 // Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
 function asDate(x: any): Date | null {
@@ -76,6 +77,10 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [materialId, setMaterialId] = useState<string>('');
+  const orgId = lead.org_id || ORG_UUID;
+
   useEffect(() => {
     if (lead) {
       setFormData({
@@ -86,6 +91,20 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
       });
     }
   }, [lead]);
+  
+  useEffect(()=> {
+    if (isOpen && orgId) {
+      loadMaterials(orgId)
+        .then(rows => {
+            setMaterials(rows);
+            if (rows.length && !materialId) {
+                setMaterialId(rows[0].id);
+            }
+        })
+        .catch(err => console.error("Failed to load materials", err));
+    }
+  }, [isOpen, orgId, materialId]);
+  
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -153,6 +172,44 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
     }
   };
 
+  const selectedMaterial = materials.find(m => m.id === materialId);
+
+  async function shareViaWA() {
+    const toRaw = resolveLeadPhone(lead as AnyLead);
+    if (!toRaw) { alert('No WhatsApp number available for this lead.'); return; }
+    if (!selectedMaterial) { alert('Please select a material to share.'); return; }
+
+    const firstName = (lead.name || '').split(' ')[0] || 'there';
+    const text = `Hi ${firstName}, here is the material we discussed: ${selectedMaterial.name}\n${selectedMaterial.url}`;
+    
+    await sendWhatsAppVia('wa', { to: toRaw, text, leadId: lead.id });
+    try { 
+        await logShare(orgId, lead.id, selectedMaterial.id, 'wa'); 
+        alert('Share action logged.');
+    } catch(e) {
+        console.error("Failed to log share event", e);
+    }
+  }
+
+  function shareViaEmail() {
+    if (!selectedMaterial) { alert('Please select a material to share.'); return; }
+    if (!lead.email) { alert('No email address available for this lead.'); return; }
+
+    const subject = encodeURIComponent(`Requested Material: ${selectedMaterial.name}`);
+    const body = encodeURIComponent(
+`Hi ${lead.name || ''},
+
+As requested, here is the material we discussed:
+- ${selectedMaterial.name}
+- ${selectedMaterial.url}
+
+Best regards,`);
+    const url = `mailto:${lead.email}?subject=${subject}&body=${body}`;
+    window.open(url, '_blank');
+
+    logShare(orgId, lead.id, selectedMaterial.id, 'email').catch(e => console.error("Failed to log share event", e));
+  }
+
 
   if (!isOpen) return null;
 
@@ -200,48 +257,90 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
             </div>
           </div>
 
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Quick Actions</h3>
-            <div className="flex flex-wrap gap-2">
-                <button
-                    type="button"
-                    title="Send via BuilderBot"
-                    aria-label="Send via BuilderBot"
-                    className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-60"
-                    onClick={() => handleSendWhatsApp('builderbot')}
-                    disabled={providerName() === 'none' || isSending}
-                >
-                    {isSending ? <LoaderCircle className="w-5 h-5 animate-spin"/> : <Bot className="w-5 h-5" />}
-                    BuilderBot
-                </button>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Quick Actions</h3>
+              <div className="flex flex-wrap gap-2">
+                  <button
+                      type="button"
+                      title="Send via BuilderBot"
+                      aria-label="Send via BuilderBot"
+                      className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-60"
+                      onClick={() => handleSendWhatsApp('builderbot')}
+                      disabled={providerName() === 'none' || isSending}
+                  >
+                      {isSending ? <LoaderCircle className="w-5 h-5 animate-spin"/> : <Bot className="w-5 h-5" />}
+                      BuilderBot
+                  </button>
 
-                <button
-                    type="button"
-                    title="Open WhatsApp link"
-                    aria-label="Open WhatsApp link"
-                    className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60"
-                    onClick={() => handleSendWhatsApp('wa')}
-                    disabled={isSending}
-                >
-                   {isSending ? <LoaderCircle className="w-5 h-5 animate-spin"/> : <MessageSquare className="w-5 h-5" />}
-                    WhatsApp
-                </button>
-                
-                <a
-                  href={`mailto:${lead.email || ''}?subject=${encodeURIComponent('Event Follow-up')}&body=${encodeURIComponent(
-`Hi ${lead.name || ''},
+                  <button
+                      type="button"
+                      title="Open WhatsApp link"
+                      aria-label="Open WhatsApp link"
+                      className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60"
+                      onClick={() => handleSendWhatsApp('wa')}
+                      disabled={isSending}
+                  >
+                    {isSending ? <LoaderCircle className="w-5 h-5 animate-spin"/> : <MessageSquare className="w-5 h-5" />}
+                      WhatsApp
+                  </button>
+                  
+                  <a
+                    href={`mailto:${lead.email || ''}?subject=${encodeURIComponent('Event Follow-up')}&body=${encodeURIComponent(
+  `Hi ${lead.name || ''},
 
-Thanks for visiting our stand. Let us know if you'd like a quick call or a tailored proposal.
+  Thanks for visiting our stand. Let us know if you'd like a quick call or a tailored proposal.
 
-Best regards,`)}`}
-                  target="_blank" rel="noreferrer"
-                  title="Send Email" aria-label="Email"
-                  className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <Mail className="w-5 h-5" />
-                  Email
-                </a>
+  Best regards,`)}`}
+                    target="_blank" rel="noreferrer"
+                    title="Send Email" aria-label="Email"
+                    className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  >
+                    <Mail className="w-5 h-5" />
+                    Email
+                  </a>
+              </div>
             </div>
+
+            <div>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Share Material</h3>
+                <div className="flex flex-col sm:flex-row gap-2 mt-1">
+                <select
+                    value={materialId}
+                    onChange={e=>setMaterialId(e.target.value)}
+                    className="w-full rounded-xl border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400"
+                    disabled={materials.length === 0}
+                >
+                    {materials.length === 0 ? (
+                        <option>No materials available</option>
+                    ) : (
+                        materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                    )}
+                </select>
+
+                <div className="flex gap-2 flex-shrink-0">
+                    <button
+                    type="button"
+                    className="h-11 inline-flex items-center justify-center gap-2 px-3 rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                    onClick={shareViaWA}
+                    disabled={!selectedMaterial || !resolveLeadPhone(lead as AnyLead)}
+                    title="Share via WhatsApp"
+                    >
+                    <MessageSquare className="w-5 h-5" />
+                    </button>
+                    <button
+                    type="button"
+                    className="h-11 inline-flex items-center justify-center gap-2 px-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                    onClick={shareViaEmail}
+                    disabled={!selectedMaterial || !lead.email}
+                    title="Share via Email"
+                    >
+                    <Mail className="w-5 h-5" />
+                    </button>
+                </div>
+                </div>
+            </div>
+
             <div className="mt-4 rounded-lg border border-gray-200 dark:border-gray-800 p-3">
               <p className="text-xs text-gray-500 dark:text-gray-400">Activity log coming soon…</p>
             </div>
