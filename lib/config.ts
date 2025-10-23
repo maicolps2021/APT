@@ -1,7 +1,58 @@
 // lib/config.ts
 
-// Fallback tolerante a tipo (no afecta runtime con Vite)
-const ENV = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) ? (import.meta as any).env : {};
+// Fallback tolerante para env
+const ENV: Record<string, string | undefined> =
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env)
+    ? ((import.meta as any).env as Record<string, string | undefined>)
+    : {};
+
+function parseJsonSafe<T = any>(raw?: string): T | null {
+  if (!raw) return null;
+  try { return JSON.parse(raw) as T; } catch { return null; }
+}
+
+export type FirebaseConfig = {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+  measurementId?: string;
+};
+
+export function getFirebaseConfig(): FirebaseConfig {
+  // 1) Intentar JSON completo
+  const jsonCfg = parseJsonSafe<FirebaseConfig>(ENV.VITE_FIREBASE_CONFIG);
+  const cfg: Partial<FirebaseConfig> = jsonCfg ? { ...jsonCfg } : {};
+
+  // 2) Rellenar con variables individuales si faltan
+  cfg.apiKey            = cfg.apiKey            || ENV.VITE_FIREBASE_API_KEY;
+  cfg.authDomain        = cfg.authDomain        || ENV.VITE_FIREBASE_AUTH_DOMAIN;
+  cfg.projectId         = cfg.projectId         || ENV.VITE_FIREBASE_PROJECT_ID;
+  cfg.storageBucket     = cfg.storageBucket     || ENV.VITE_FIREBASE_STORAGE_BUCKET;
+  cfg.messagingSenderId = cfg.messagingSenderId || ENV.VITE_FIREBASE_MESSAGING_SENDER_ID;
+  cfg.appId             = cfg.appId             || ENV.VITE_FIREBASE_APP_ID;
+  cfg.measurementId     = cfg.measurementId     || ENV.VITE_FIREBASE_MEASUREMENT_ID;
+
+  // 3) Validación mínima
+  const miss: string[] = [];
+  (['apiKey','authDomain','projectId','storageBucket','messagingSenderId','appId'] as const).forEach(k => {
+    // @ts-ignore
+    if (!cfg[k] || String(cfg[k]).trim() === '') miss.push(k);
+  });
+
+  if (miss.length) {
+    // No imprimas valores; solo claves faltantes
+    throw new Error(
+      `Firebase configuration is missing keys: ${miss.join(', ')}. ` +
+      `Provide VITE_FIREBASE_CONFIG (JSON) o variables individuales VITE_FIREBASE_*`
+    );
+  }
+
+  return cfg as FirebaseConfig;
+}
+
 
 // --- Event Configuration ---
 export const ORG_UUID = ENV.VITE_ORG_UUID || 'b3b7c8f0-1e1a-4b0a-8b1a-0e1a4b0a8b1a';
@@ -19,20 +70,6 @@ export const MSG_AUTO = (ENV.VITE_MSG_AUTO || 'false') === 'true';
 export const VITE_API_KEY = ENV.VITE_GEMINI_API_KEY || '';
 export const BUILDERBOT_API_KEY = ENV.VITE_BUILDERBOT_API_KEY || '';
 export const BUILDERBOT_ID = ENV.VITE_BUILDERBOT_ID || '';
-
-// --- Firebase Configuration ---
-// This should be a JSON string in your .env file.
-// Example: VITE_FIREBASE_CONFIG='{"apiKey": "...", "authDomain": "...", ...}'
-export const FIREBASE_CONFIG = (() => {
-    try {
-        // Fallback to an empty string if env var is not set to avoid parsing 'undefined'
-        return JSON.parse(ENV.VITE_FIREBASE_CONFIG || '{}');
-    } catch (e) {
-        console.error("Failed to parse VITE_FIREBASE_CONFIG. It must be a valid JSON string.", e);
-        return {};
-    }
-})();
-
 
 // --- TV Display Configuration ---
 export const TV_PREFIX = ENV.VITE_TV_PREFIX || 'tv-assets-conagui2024';
