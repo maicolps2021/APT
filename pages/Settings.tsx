@@ -61,7 +61,10 @@ const Settings: React.FC = () => {
         try {
             const playlistRef = ref(storage, `${TV_PREFIX}/playlist.json`);
             const url = await getDownloadURL(playlistRef);
-            const response = await fetch(url);
+            
+            const urlNoCache = `${url}${url.includes('?') ? '&' : '?'}cb=${Date.now()}`;
+            const response = await fetch(urlNoCache, { cache: 'no-store' });
+
             if (!response.ok) throw new Error("Playlist fetch failed");
             const data = await response.json();
             setPlaylist(data.items || []);

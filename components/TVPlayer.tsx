@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { loadPlaylist, TVItem } from '../lib/tv';
 import { WHATSAPP } from '../lib/config';
 import { QRCodeSVG } from 'qrcode.react';
-import { tvChannel, TVWelcomeMessage } from '../lib/broadcastService';
+import { getTvChannel, TVWelcomeMessage } from '../lib/broadcastService';
+import { listenTvEvents } from '../lib/tvFallback';
 
 // --- Sub-componente para el contenido de fondo (Playlist) ---
 const MainPlayerContent: React.FC<{ item: TVItem | null; onEnded: () => void }> = React.memo(({ item, onEnded }) => {
@@ -15,6 +16,7 @@ const MainPlayerContent: React.FC<{ item: TVItem | null; onEnded: () => void }> 
           src={item.src}
           autoPlay
           muted
+          playsInline
           onEnded={onEnded}
           className="absolute top-0 left-0 w-full h-full object-cover"
         />
@@ -121,7 +123,7 @@ const TVPlayer: React.FC = () => {
     };
   }, [currentItemIndex, playlist, advanceToNextItem, isLoading]);
 
-  // Efecto para escuchar los mensajes de bienvenida del Broadcast Channel
+  // Efecto para escuchar los mensajes de bienvenida (BroadcastChannel o Fallback)
   useEffect(() => {
     const handleNewMessage = (event: MessageEvent<TVWelcomeMessage>) => {
       const message = event.data;
@@ -136,10 +138,26 @@ const TVPlayer: React.FC = () => {
       }
     };
 
-    tvChannel.addEventListener('message', handleNewMessage);
+    const channel = getTvChannel();
+    let unsubscribeFromFallback: (() => void) | null = null;
+
+    if (channel) {
+      channel.addEventListener('message', handleNewMessage);
+    } else {
+      console.warn("BroadcastChannel not supported, using Firestore fallback for TV messages.");
+      unsubscribeFromFallback = listenTvEvents((eventData) => {
+        // Adapt the Firestore event to look like a MessageEvent for the handler
+        handleNewMessage({ data: eventData } as MessageEvent<TVWelcomeMessage>);
+      });
+    }
 
     return () => {
-      tvChannel.removeEventListener('message', handleNewMessage);
+      if (channel) {
+        channel.removeEventListener('message', handleNewMessage);
+      }
+      if (unsubscribeFromFallback) {
+        unsubscribeFromFallback();
+      }
       if (playlistTimerRef.current) clearTimeout(playlistTimerRef.current);
       if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
     };

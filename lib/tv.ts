@@ -10,21 +10,29 @@ export type TVItem = {
   qr?: boolean;
 };
 
+// Define the shape of the raw item before src is resolved
+type RawTVItem = Omit<TVItem, 'src'> & { src: string };
+
 export async function loadPlaylist(): Promise<TVItem[]> {
   try {
     // 1. Get the public URL for the playlist.json file from Firebase Storage
     const playlistRef = ref(storage, `${TV_PREFIX}/playlist.json`);
     const playlistUrl = await getDownloadURL(playlistRef);
 
-    // 2. Fetch the playlist file
-    const res = await fetch(playlistUrl);
+    // 2. Fetch the playlist file with cache-busting
+    const urlNoCache = `${playlistUrl}${playlistUrl.includes('?') ? '&' : '?'}cb=${Date.now()}`;
+    const res = await fetch(urlNoCache, { cache: 'no-store' });
+    
     if (!res.ok) {
       throw new Error(`Failed to fetch playlist: ${res.status} ${res.statusText}. Ensure 'playlist.json' exists in '${TV_PREFIX}' and Storage is public.`);
     }
-    const json = await res.json() as { items: Omit<TVItem, 'src'> & { src: string }[] }; // src is relative path here
+    const data = await res.json();
+    
+    // Tolerate both { items: [] } and [] formats for the playlist data
+    const rawItems: RawTVItem[] = data.items ?? data;
 
     // 3. Normalize asset URLs
-    const assetPromises = (json.items || []).map(async (item) => {
+    const assetPromises = (rawItems || []).map(async (item) => {
       const assetRef = ref(storage, `${TV_PREFIX}/${item.src}`);
       const assetUrl = await getDownloadURL(assetRef);
       return { ...item, src: assetUrl };

@@ -8,8 +8,31 @@ export interface TVWelcomeMessage {
   welcomeMessage: string;
 }
 
+export const CHANNEL_NAME = 'tv-welcome-messages';
+
+let _ch: BroadcastChannel | null = null;
+
 /**
- * A dedicated BroadcastChannel for sending real-time welcome messages
- * from the lead capture form to the TV display page.
+ * Safely gets a singleton instance of the BroadcastChannel.
+ * Returns null if the API is not supported by the browser.
+ * @returns {BroadcastChannel | null}
  */
-export const tvChannel = new BroadcastChannel('tv-welcome-messages');
+export function getTvChannel(): BroadcastChannel | null {
+  if (typeof window === 'undefined') return null;
+  
+  // Check for BroadcastChannel constructor
+  const BC: any = (window as any).BroadcastChannel;
+  if (!BC) return null;
+
+  // Create singleton instance if it doesn't exist
+  if (!_ch) {
+    try {
+      _ch = new BC(CHANNEL_NAME);
+    } catch (e) {
+      console.error("Failed to create BroadcastChannel:", e);
+      return null;
+    }
+  }
+  
+  return _ch;
+}

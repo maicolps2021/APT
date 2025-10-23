@@ -4,8 +4,9 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ORG_UUID, EVENT_CODE, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
 import { generateWelcomeMessage } from '../lib/geminiService';
-import { tvChannel } from '../lib/broadcastService';
-import { CheckCircle, LoaderCircle, UserPlus } from 'lucide-react';
+import { getTvChannel } from '../lib/broadcastService';
+import { sendTvEvent } from '../lib/tvFallback';
+import { CheckCircle, LoaderCircle } from 'lucide-react';
 import { hasGemini } from '../lib/ai';
 
 interface LeadFormProps {
@@ -93,8 +94,13 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
 
       if (hasGemini()) {
         const welcomeMessage = await generateWelcomeMessage(newLead);
-        // Use Broadcast Channel to send the message to the TV display
-        tvChannel.postMessage({ lead: newLead, welcomeMessage });
+        // Use Broadcast Channel if available, otherwise use Firestore fallback
+        const channel = getTvChannel();
+        if (channel) {
+          channel.postMessage({ lead: newLead, welcomeMessage });
+        } else {
+          await sendTvEvent({ lead: newLead, welcomeMessage });
+        }
       }
       
       onSuccess(newLead);
