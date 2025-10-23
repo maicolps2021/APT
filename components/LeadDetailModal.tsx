@@ -6,6 +6,24 @@ import { EVENT_CODE, WHATSAPP } from '../lib/config';
 import { sendWhatsApp, isReady, providerName } from '../services/messaging';
 import { X, Save, MessageSquare, Mail, LoaderCircle } from 'lucide-react';
 
+// Helpers to safely resolve phone number from various possible fields
+type AnyLead = Lead & Record<string, any>;
+
+function resolveLeadPhone(lead: AnyLead): string | undefined {
+  const keys = ['phone', 'phone_number', 'telefono', 'whatsapp', 'mobile', 'cell'];
+  for (const k of keys) {
+    const v = lead?.[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
+function normPhone(p?: string) {
+  if (!p) return '';
+  return p.replace(/[()\-\s]/g, '').trim();
+}
+
+
 interface LeadDetailModalProps {
   lead: Lead;
   isOpen: boolean;
@@ -135,11 +153,12 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
                   className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60"
                   onClick={async () => {
                     try {
-                      const to = lead.whatsapp || WHATSAPP;
-                      if (!to) {
+                      const toRaw = resolveLeadPhone(lead as AnyLead) || WHATSAPP;
+                      if (!toRaw) {
                           alert('No phone number available for this lead.');
                           return;
                       }
+                      const to = normPhone(toRaw);
                       const text = buildWaText(lead);
                       const res = await sendWhatsApp({ to, text, leadId: lead.id });
                       alert(res === 'sent' ? 'WhatsApp sent ✅' : 'Opening WhatsApp…');
