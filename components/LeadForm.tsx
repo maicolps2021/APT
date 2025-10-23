@@ -1,5 +1,3 @@
-
-
 import React, { useState } from 'react';
 import type { Lead } from '../types';
 import { db } from '../lib/supabaseClient'; // This is Firebase
@@ -104,10 +102,12 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
 
     const { day, slot } = getCurrentEventDetails();
 
-    const leadPayload: Omit<Lead, 'id' | 'created_at'> = {
+    // This new payload only includes the fields from the form,
+    // avoiding sending `undefined` for optional fields like next_step.
+    const leadPayload = {
       org_id: ORG_UUID,
       event_code: EVENT_CODE,
-      source: 'MANUAL',
+      source: 'MANUAL' as 'MANUAL',
       day,
       slot,
       name: formData.name.trim(),
@@ -117,7 +117,7 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
       whatsapp: formData.whatsapp.trim() || undefined,
       email: formData.email.trim().toLowerCase() || undefined,
       interest: formData.interest as Lead['interest'],
-      next_step: undefined, scoring: undefined, owner: undefined, meeting_at: undefined, notes: undefined, tags: [],
+      tags: [],
     };
 
     try {
