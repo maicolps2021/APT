@@ -1,65 +1,65 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { AuthProvider } from './contexts/AuthContext';
+import { TVMessageProvider } from './contexts/TVMessageContext';
+import { DashboardLayout } from './components/DashboardLayout';
+
+// Import pages
 import Home from './pages/Home';
 import Capture from './pages/Capture';
-import MC from './pages/MC';
-import TV from './pages/TV';
+import LeadList from './pages/LeadList';
 import KPIs from './pages/KPIs';
 import Raffles from './pages/Raffles';
 import Materials from './pages/Materials';
-import LeadList from './pages/LeadList';
+import TV from './pages/TV';
+import MC from './pages/MC';
+import Meetings from './pages/Meetings';
 import Settings from './pages/Settings';
-import DashboardLayout from './components/DashboardLayout';
-import { AuthProvider } from './contexts/AuthContext';
 
-const App: React.FC = () => {
-  const [route, setRoute] = useState(window.location.hash);
+const routes: { [key: string]: React.ComponentType } = {
+  '/': Home,
+  '/capture': Capture,
+  '/leads': LeadList,
+  '/kpis': KPIs,
+  '/raffles': Raffles,
+  '/materials': Materials,
+  '/tv': TV,
+  '/mc': MC,
+  '/meetings': Meetings, // Deprecated but kept for routing
+  '/settings': Settings,
+  // Fallback to Home for unknown routes
+};
 
-  useEffect(() => {
+const SimpleRouter = () => {
+  const [hash, setHash] = React.useState(window.location.hash.substring(1) || '/');
+
+  React.useEffect(() => {
     const handleHashChange = () => {
-      setRoute(window.location.hash);
+      setHash(window.location.hash.substring(1) || '/');
     };
-
     window.addEventListener('hashchange', handleHashChange);
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-    };
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
-
-  const renderPage = () => {
-    switch (route) {
-      case '#/capture':
-        return <Capture />;
-      case '#/mc':
-        return <MC />;
-      case '#/kpis':
-        return <KPIs />;
-      case '#/raffles':
-        return <Raffles />;
-      case '#/tv':
-        return <TV />;
-      case '#/materials':
-        return <Materials />;
-      case '#/leads':
-        return <LeadList />;
-      case '#/settings':
-        return <Settings />;
-      case '#/':
-      case '':
-      default:
-        return <Home />;
-    }
-  };
   
-  // Render TV and Capture pages in full-screen "kiosk" mode without the dashboard layout
-  if (route === '#/tv' || route === '#/capture') {
-    return <AuthProvider>{renderPage()}</AuthProvider>;
+  // Special case for TV view, which shouldn't have the dashboard layout
+  if (hash === '/tv') {
+    return <TV />;
   }
 
+  const Page = routes[hash] || Home;
+
+  return (
+    <DashboardLayout>
+      <Page />
+    </DashboardLayout>
+  );
+};
+
+const App: React.FC = () => {
   return (
     <AuthProvider>
-      <DashboardLayout>
-        {renderPage()}
-      </DashboardLayout>
+      <TVMessageProvider>
+        <SimpleRouter />
+      </TVMessageProvider>
     </AuthProvider>
   );
 };
