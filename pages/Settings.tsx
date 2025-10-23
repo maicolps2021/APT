@@ -58,11 +58,18 @@ const Settings: React.FC = () => {
                     existingPlaylist = JSON.parse(await playlistBlob.text()).items || [];
                 }
             } catch (e) { console.warn("Could not parse playlist.json, starting fresh.", e); }
-            const finalPlaylist = mediaFiles.map(file => {
+            
+            const finalPlaylist: TVItem[] = mediaFiles.map((file): TVItem => {
                 const existing = existingPlaylist.find(item => item.src.split('/').pop() === file.name);
                 if (existing) return existing;
                 const isVideo = /\.(mp4|webm|mov)$/i.test(file.name);
-                return { src: file.name, type: isVideo ? 'video' : 'image', overlay: '', qr: false, duration: isVideo ? undefined : 8000 };
+                return { 
+                    src: file.name, 
+                    type: isVideo ? 'video' : 'image', 
+                    overlay: '', 
+                    qr: false, 
+                    duration: isVideo ? undefined : 8000 
+                };
             });
             setPlaylistItems(finalPlaylist);
 
