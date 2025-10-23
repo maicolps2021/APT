@@ -32,3 +32,12 @@ export const MSG_AUTO = (env.VITE_MSG_AUTO || 'false') === 'true';
 
 // Fallback WhatsApp number
 export const WHATSAPP = env.VITE_WHATSAPP || '';
+
+// TV overlay settings
+export const TV_WELCOME_DURATION_MS = Number(env.VITE_TV_WELCOME_DURATION_MS || 12000);
+// 'glass' | 'gradient'
+export const TV_OVERLAY_THEME = (env.VITE_TV_OVERLAY_THEME || 'glass') as 'glass'|'gradient';
+// Mostrar contador de cola "Up next: N"
+export const TV_SHOW_QUEUE_COUNT = (env.VITE_TV_SHOW_QUEUE_COUNT || 'true') === 'true';
+// Logo (opcional): URL pública o ruta local
+export const TV_LOGO_URL = env.VITE_TV_LOGO_URL || '';

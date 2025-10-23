@@ -2,17 +2,22 @@ import React, { useEffect, useRef, useState } from 'react';
 import { loadPlaylist, type TVItem } from '../lib/tv';
 import { listenTvEvents, type TvEvent } from '../lib/tvBus';
 import { getTvChannel } from '../lib/broadcastService';
+import { TV_WELCOME_DURATION_MS, TV_OVERLAY_THEME, TV_SHOW_QUEUE_COUNT, TV_LOGO_URL } from '../lib/config';
 
-const WELCOME_MS = 12_000;
+// Tipos para el mensaje de bienvenida
+type WelcomeMsg = {
+  id: string;
+  name?: string;
+  company?: string;
+  message: string;
+};
 
-// FIX: Refactored to a React.FC with an interface to correctly handle the 'key' prop passed by the parent, resolving a TypeScript error.
+// Componente para el contenido principal (video/imagen)
 interface MainPlayerContentProps {
   item: TVItem;
   onVideoEnd: () => void;
 }
-
-// Renderizador base (respeta tu diseño existente)
-const MainPlayerContent: React.FC<MainPlayerContentProps> = ({ item, onVideoEnd }) => {
+const MainPlayerContent: React.FC<MainPlayerContentProps> = React.memo(({ item, onVideoEnd }) => {
   if (item.type === 'video') {
     return (
       <video
@@ -30,135 +35,150 @@ const MainPlayerContent: React.FC<MainPlayerContentProps> = ({ item, onVideoEnd 
   return (
     <div
       key={item.src}
-      className="w-full h-full object-cover bg-cover bg-center"
+      className="w-full h-full bg-cover bg-center"
       style={{ backgroundImage: `url(${item.src})` }}
     />
   );
-}
+});
 
 const TVPlayer: React.FC = () => {
   const [items, setItems] = useState<TVItem[]>([]);
   const [idx, setIdx] = useState(0);
 
-  // Estado visible del overlay:
-  const [welcome, setWelcome] = useState<{ name: string; aiMessage: string } | null>(null);
+  // Estado y refs para la cola de bienvenida y el overlay
+  const [welcomeQueue, setWelcomeQueue] = useState<WelcomeMsg[]>([]);
+  const [activeWelcome, setActiveWelcome] = useState<WelcomeMsg | null>(null);
+  const [overlayVisible, setOverlayVisible] = useState(false);
+  const hideTimerRef = useRef<number | null>(null);
+  const animTimerRef = useRef<number | null>(null);
 
-  // ---- NUEVO: cola y control ----
-  const queueRef = useRef<TvEvent[]>([]);
-  const welcomeTimer = useRef<number | null>(null);
-
-  function clearWelcomeTimer() {
-    if (welcomeTimer.current) {
-      clearTimeout(welcomeTimer.current);
-      welcomeTimer.current = null;
-    }
+  // Función para encolar nuevos mensajes
+  function enqueueWelcome(msg: TvEvent) {
+    const normalizedMsg: WelcomeMsg = {
+      id: msg.lead.id || `${Date.now()}`,
+      name: msg.lead.name,
+      company: msg.lead.company,
+      message: (msg.welcomeMessage || '').trim() || 'Great to have you here—enjoy the experience!',
+    };
+    setWelcomeQueue(q => [...q, normalizedMsg]);
   }
 
-  function showNextFromQueue() {
-    clearWelcomeTimer();
-    const next = queueRef.current.shift();
-    if (!next) {
-      setWelcome(null);
-      return;
-    }
-    setWelcome({ name: next.lead?.name ?? 'Guest', aiMessage: next.welcomeMessage ?? '' });
-    welcomeTimer.current = window.setTimeout(() => {
-      // setWelcome(null); // No es necesario, showNextFromQueue lo sobreescribirá o limpiará
-      showNextFromQueue();
-    }, WELCOME_MS);
-  }
-
-  function enqueue(evt: TvEvent) {
-    queueRef.current.push(evt);
-    // Si no hay nada mostrándose, iniciar el ciclo
-    if (!welcome && !welcomeTimer.current) {
-      showNextFromQueue();
-    }
-  }
-  // ---- FIN NUEVO ----
-
-  // Carga de playlist (sin tocar tu lógica original)
+  // Loop de consumo de la cola (FIFO)
   useEffect(() => {
-    (async () => {
-      const list = await loadPlaylist();
-      setItems(list);
-    })().catch(console.error);
+    if (activeWelcome || welcomeQueue.length === 0) return;
+
+    const nextInQueue = welcomeQueue[0];
+    setActiveWelcome(nextInQueue);
+    setWelcomeQueue(q => q.slice(1));
+
+    // Mostrar overlay
+    setOverlayVisible(true);
+
+    // Limpiar timers previos
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    if (animTimerRef.current) clearTimeout(animTimerRef.current);
+    
+    // Programar ocultación
+    hideTimerRef.current = window.setTimeout(() => {
+      setOverlayVisible(false);
+      // Limpiar el mensaje activo después de la transición de salida
+      animTimerRef.current = window.setTimeout(() => setActiveWelcome(null), 300);
+    }, TV_WELCOME_DURATION_MS);
+
+  }, [welcomeQueue, activeWelcome]);
+  
+  // Carga de playlist
+  useEffect(() => {
+    loadPlaylist().then(setItems).catch(console.error);
   }, []);
 
-  // Suscripciones: Firestore (principal) + BroadcastChannel (secundario)
+  // Suscripciones a eventos
   useEffect(() => {
-    // Principal: Firestore (multidispositivo)
-    const unsubBus = listenTvEvents((evt) => enqueue(evt));
-
-    // Secundario: BroadcastChannel (mismo dispositivo)
+    const unsubBus = listenTvEvents(enqueueWelcome);
     const ch = getTvChannel();
-    const onMsg = (e: MessageEvent<any>) => {
-      const d = e.data;
-      if (!d?.lead || !d.welcomeMessage) return;
-      enqueue({
-        lead: { id: d.lead?.id ?? '', name: d.lead?.name ?? 'Guest', company: d.lead?.company, notes: d.lead?.notes },
-        welcomeMessage: d.welcomeMessage ?? '',
-      });
+    const onMsg = (e: MessageEvent<TvEvent>) => {
+        if (e.data?.lead && e.data.welcomeMessage) {
+            enqueueWelcome(e.data);
+        }
     };
-    if (ch) ch.addEventListener('message', onMsg);
+    if (ch) ch.addEventListener('message', onMsg as EventListener);
 
     return () => {
-      clearWelcomeTimer();
-      if (ch) ch.removeEventListener('message', onMsg);
       unsubBus();
+      if (ch) ch.removeEventListener('message', onMsg as EventListener);
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
     };
   }, []);
 
-  // Avance de playlist (respeta tu implementación actual)
+  // Avance de playlist
   useEffect(() => {
     if (items.length === 0) return;
     const current = items[idx];
-    if (!current) return;
-    if (current.type === 'image') {
-      const d = Math.max(3000, current.duration ?? 8000);
-      const t = window.setTimeout(() => setIdx((i) => (i + 1) % items.length), d);
-      return () => clearTimeout(t);
+    if (current?.type === 'image') {
+      const duration = Math.max(3000, current.duration ?? 8000);
+      const timer = setTimeout(() => setIdx(i => (i + 1) % items.length), duration);
+      return () => clearTimeout(timer);
     }
   }, [idx, items]);
 
-  function onVideoEnd() {
-    if (items.length > 0) {
-      setIdx((i) => (i + 1) % items.length);
-    }
-  }
+  const onVideoEnd = () => {
+    if (items.length > 0) setIdx(i => (i + 1) % items.length);
+  };
 
   return (
     <div className="w-screen h-screen bg-black relative overflow-hidden">
-      {/* Capa base: playlist (no se pausa) */}
+      {/* Capa base: playlist (nunca se pausa) */}
       <div className="absolute inset-0 z-10">
-        {items.length > 0 && (
-          <MainPlayerContent
-            key={idx}
-            item={items[idx]}
-            onVideoEnd={onVideoEnd}
-          />
-        )}
+        {items.length > 0 && <MainPlayerContent item={items[idx]} onVideoEnd={onVideoEnd} />}
       </div>
 
-      {/* Capa overlay: bienvenida con cola */}
-      <div className={`absolute inset-0 z-20 transition-opacity duration-700 ${welcome ? 'opacity-100' : 'opacity-0 pointer-events-none'} flex items-center justify-center bg-black/50`}>
-        {welcome && (
-          <div className="w-[85vw] max-w-[1200px] bg-white/95 dark:bg-gray-900/95 rounded-2xl p-8 shadow-2xl text-center text-gray-800 dark:text-gray-100 animate-fade-in-up">
-            <h2 className="text-5xl md:text-7xl font-extrabold text-blue-600 dark:text-blue-400">¡Bienvenido, {welcome.name}!</h2>
-            <p className="text-2xl md:text-4xl leading-snug my-6">{welcome.aiMessage}</p>
-            {queueRef.current.length > 0 && (
-              <p className="text-lg opacity-70">Siguientes en cola: {queueRef.current.length}</p>
-            )}
-          </div>
+      {/* Overlay de bienvenida */}
+      <div
+        aria-live="polite"
+        className={`pointer-events-none fixed inset-0 z-20 transition-opacity duration-300 ease-out ${overlayVisible && activeWelcome ? 'opacity-100' : 'opacity-0'}`}
+        style={{ contain: 'layout paint', willChange: 'opacity' }}
+      >
+        {TV_OVERLAY_THEME === 'glass' ? (
+          <div className="absolute inset-0 bg-black/35 backdrop-blur-[8px]" />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-700/70 via-purple-700/60 to-fuchsia-600/70" />
         )}
+        <div className="relative h-full w-full flex items-center justify-center p-[min(6vw,40px)]">
+          {activeWelcome && (
+            <div
+              className={`max-w-[1200px] w-full rounded-3xl bg-white/90 dark:bg-black/75 shadow-2xl ring-1 ring-white/30 dark:ring-black/30 px-[min(6vw,40px)] py-[min(5vw,32px)] transition-transform duration-300 ease-out ${overlayVisible ? 'scale-100' : 'scale-95'}`}
+            >
+              <div className="flex items-center justify-between mb-[min(3vw,20px)]">
+                <div className="text-[min(3.8vw,22px)] font-semibold tracking-tight text-gray-800 dark:text-gray-100">
+                  Welcome!
+                </div>
+                <div className="flex items-center gap-3">
+                  {TV_SHOW_QUEUE_COUNT && welcomeQueue.length > 0 && (
+                    <span className="text-[min(2.7vw,14px)] font-medium text-white bg-black/40 rounded-full px-3 py-1">
+                      Up next: {welcomeQueue.length}
+                    </span>
+                  )}
+                  {TV_LOGO_URL && <img src={TV_LOGO_URL} alt="logo" className="h-[min(8vw,56px)] w-auto object-contain" />}
+                </div>
+              </div>
+              <div className="space-y-[min(2.5vw,16px)]">
+                <div className="leading-[1.05] font-extrabold text-gray-900 dark:text-white" style={{ fontSize: 'clamp(32px, min(10vw, 72px), 72px)' }}>
+                  {`Hi ${activeWelcome.name?.split(' ')[0] || 'there'}!`}
+                </div>
+                <p className="text-gray-800/90 dark:text-gray-100/90 [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden" style={{ fontSize: 'clamp(16px, min(4.6vw, 28px), 28px)', lineHeight: 1.2 }}>
+                  {activeWelcome.message}
+                </p>
+                {activeWelcome.company && (
+                  <div className="text-gray-700/90 dark:text-gray-200/80" style={{ fontSize: 'clamp(14px, min(3.6vw, 20px), 20px)' }}>
+                    {activeWelcome.company}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-       <style>{`
-        @keyframes fade-in-up {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in-up { animation: fade-in-up 0.5s ease-out forwards; }
-      `}</style>
     </div>
   );
 };
