@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../lib/supabaseClient';
-import { collection, getDocs, doc, getDoc, query, where, orderBy, getCountFromServer, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, where, orderBy, getCountFromServer } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Raffle, Lead } from '../types';
 import Card from '../components/Card';
@@ -8,7 +8,7 @@ import RafflePanel from '../components/RafflePanel';
 import { RaffleCard, RaffleWithWinner } from '../components/RaffleCard';
 import { deleteRaffle, drawWinner } from '../lib/raffles';
 import { LoaderCircle } from 'lucide-react';
-import { postTVMessage } from '../lib/broadcastService';
+
 
 const Raffles: React.FC = () => {
     const [raffles, setRaffles] = useState<RaffleWithWinner[]>([]);
@@ -108,31 +108,6 @@ const Raffles: React.FC = () => {
       }
     };
     
-    const announceWinner = async (raffle: Raffle, winner: Lead) => {
-      const payload = {
-        raffleId: raffle.id,
-        raffleName: `Sorteo Día ${raffle.day}`,
-        prize: raffle.prize,
-        winnerName: winner.name,
-        winnerCompany: winner.company,
-      };
-
-      // 1. Instant update on the same machine via BroadcastChannel
-      postTVMessage({ kind: 'raffle', ...payload });
-
-      // 2. Cross-device update via Firestore event log
-      try {
-        await addDoc(collection(db, 'orgs', ORG_UUID, 'events'), {
-          type: 'raffle',
-          created_at: serverTimestamp(),
-          payload,
-        });
-      } catch (error) {
-        console.error("Failed to post raffle event to Firestore:", error);
-        // This is a non-critical error, the UI will still update locally
-      }
-    };
-
     const handleDraw = async (raffle: RaffleWithWinner) => {
         if (!window.confirm(`¿Sortear un ganador para "${raffle.prize}" ahora?`)) return;
         setLoading(true);
@@ -140,7 +115,6 @@ const Raffles: React.FC = () => {
             const winner = await drawWinner(raffle);
             if(winner) {
                 alert(`¡El ganador es ${winner.name}! La lista se actualizará.`);
-                await announceWinner(raffle, winner);
             }
             await fetchRaffles(); // Refresh the whole list to show the new winner
         } catch (err: any) {

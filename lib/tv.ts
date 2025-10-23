@@ -1,8 +1,6 @@
-import { storage, db } from './supabaseClient'; // Path kept for simplicity, points to Firebase now
+import { storage } from './supabaseClient'; // Path kept for simplicity, points to Firebase now
 import { ref, getDownloadURL } from 'firebase/storage';
-import { collection, onSnapshot, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
-import { TV_PREFIX, ORG_UUID } from './config';
-import { TVRaffleMessage } from './tvTypes';
+import { TV_PREFIX } from './config';
 
 export type TVItem = {
   type: "video" | "image";
@@ -63,39 +61,4 @@ export async function loadPlaylist(): Promise<TVItem[]> {
     }
     throw error;
   }
-}
-
-/**
- * Listens for raffle events from Firestore for cross-device communication.
- * @param cb The callback function to execute with the new raffle message.
- * @returns An unsubscribe function to stop listening.
- */
-export function subscribeToRaffleEvents(cb: (msg: TVRaffleMessage) => void) {
-  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-  const col = collection(db, 'orgs', ORG_UUID, 'events');
-  const q = query(
-    col,
-    where('type', '==', 'raffle'),
-    where('created_at', '>=', Timestamp.fromDate(fiveMinAgo)),
-    orderBy('created_at', 'desc'),
-    limit(10)
-  );
-
-  return onSnapshot(q, (snap) => {
-    snap.docChanges().forEach(chg => {
-      if (chg.type !== 'added') return;
-      const data = chg.doc.data();
-      const payload = data?.payload || {};
-      
-      const msg: TVRaffleMessage = {
-        kind: 'raffle',
-        raffleId: payload.raffleId,
-        raffleName: payload.raffleName || 'Raffle',
-        prize: payload.prize || '',
-        winnerName: payload.winnerName || 'A lucky winner',
-        winnerCompany: payload.winnerCompany || '',
-      };
-      cb(msg);
-    });
-  });
 }

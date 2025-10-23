@@ -1,6 +1,14 @@
-import type { TVEventMessage } from './tvTypes';
+import type { Lead } from '../types';
 
-export const CHANNEL_NAME = 'tv-events';
+/**
+ * Defines the structure of the message sent to the TV display.
+ */
+export interface TVWelcomeMessage {
+  lead: Lead;
+  welcomeMessage: string;
+}
+
+export const CHANNEL_NAME = 'tv-welcome-messages';
 
 let _ch: BroadcastChannel | null = null;
 
@@ -27,15 +35,4 @@ export function getTvChannel(): BroadcastChannel | null {
   }
   
   return _ch;
-}
-
-/**
- * Posts a message to the shared TV event channel.
- * @param msg The event message to post.
- */
-export function postTVMessage(msg: TVEventMessage) {
-    const channel = getTvChannel();
-    if (channel) {
-        channel.postMessage(msg);
-    }
 }
