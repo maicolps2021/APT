@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db, storage } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase
-import { collection, getDocs, doc, setDoc, query, where } from 'firebase/firestore';
-import { ref, listAll, getDownloadURL, uploadString } from 'firebase/storage';
+import { collection, getDocs, doc, setDoc, query, where } from 'firestore';
+import { ref, listAll, getDownloadURL, uploadString } from 'storage';
 import { 
     TV_PREFIX,
     ORG_UUID,
@@ -83,7 +83,7 @@ const Settings: React.FC = () => {
             const q = query(templatesRef, where('org_id', '==', ORG_UUID), where('event_code', '==', EVENT_CODE));
             const querySnapshot = await getDocs(q);
             
-            const templatesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const templatesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MessageTemplate));
             const templatesMap = new Map(templatesData.map(t => [t.channel, t]));
             const initialTemplates = LEAD_ROLES.map(role => templatesMap.get(role) || { channel: role, template: '' });
             setTemplates(initialTemplates as MessageTemplate[]);

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { db } from "../lib/supabaseClient"; // Renamed, but path is the same for simplicity
-import { collection, addDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, serverTimestamp, Timestamp } from "firebase/firestore";
 import { EVENT_CODE, ORG_UUID } from "../lib/config";
 import type { Lead } from '../types';
 import { List, PlusCircle, RotateCcw } from 'lucide-react';
@@ -99,7 +99,9 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
       const foundDocs: Lead[] = [];
       querySnapshots.forEach(snapshot => {
           snapshot.forEach(doc => {
-              foundDocs.push({ id: doc.id, ...doc.data() } as Lead);
+              const data = doc.data();
+              const createdAt = data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : new Date().toISOString();
+              foundDocs.push({ id: doc.id, ...data, created_at: createdAt } as Lead);
           });
       });
       
