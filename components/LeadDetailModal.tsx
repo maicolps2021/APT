@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Lead } from '../types';
 import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { X, Save, LoaderCircle } from 'lucide-react';
 
 interface LeadDetailModalProps {
@@ -48,12 +48,14 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
     setIsSaving(true);
     setError(null);
     try {
+      // Sanitize data for Firestore: ensure no 'undefined' values are sent.
+      // Firestore supports 'null' for clearing a field, but not 'undefined'.
       const updateData = {
-          next_step: formData.next_step,
-          scoring: formData.scoring,
-          meeting_at: formData.meeting_at,
-          owner: formData.owner,
-          notes: formData.notes,
+          next_step: formData.next_step || null,
+          scoring: formData.scoring || null,
+          meeting_at: formData.meeting_at || null,
+          owner: formData.owner || null,
+          notes: formData.notes || null,
       };
 
       const leadRef = doc(db, 'leads', lead.id);
