@@ -1,6 +1,6 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
+import { collection, getDocs, query, where, orderBy, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Lead } from '../types';
 import Card from '../components/Card';
@@ -24,18 +24,23 @@ const LeadList: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('event_code', EVENT_CODE)
-        .eq('org_id', ORG_UUID)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setLeads(data as Lead[]);
+      const leadsRef = collection(db, 'leads');
+      const q = query(leadsRef, 
+        where('event_code', '==', EVENT_CODE), 
+        where('org_id', '==', ORG_UUID),
+        orderBy('created_at', 'desc')
+      );
+      const querySnapshot = await getDocs(q);
+      const leadsData = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        // Convert Firestore Timestamp to ISO string for consistency
+        const createdAt = data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : new Date().toISOString();
+        return { id: doc.id, ...data, created_at: createdAt } as Lead
+      });
+      setLeads(leadsData);
     } catch (err: any) {
       console.error("Error fetching leads:", err);
-      setError("Failed to load leads. Please try again.");
+      setError("Failed to load leads. Please check your Firestore security rules and collection name.");
     } finally {
       setLoading(false);
     }
@@ -52,17 +57,11 @@ const LeadList: React.FC = () => {
     setDeletingId(leadId);
     setError(null);
     try {
-      const { error } = await supabase
-        .from('leads')
-        .delete()
-        .eq('id', leadId);
-
-      if (error) throw error;
-
+      await deleteDoc(doc(db, "leads", leadId));
       setLeads(prevLeads => prevLeads.filter(lead => lead.id !== leadId));
     } catch (err: any) {
       console.error("Error deleting lead:", err);
-      setError("Error al eliminar. Esto probablemente se deba a la falta de permisos en la base de datos. Asegúrate de que la 'Row Level Security' (RLS) en la tabla 'leads' permita la operación de borrado (DELETE).");
+      setError("Error al eliminar. Revisa las reglas de seguridad de Firestore para permitir la operación de borrado (delete).");
     } finally {
       setDeletingId(null);
     }

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { loadPlaylist, TVItem } from "../lib/tv";
 import { QRDisplay } from "./QRDisplay";
-import { TV_BUCKET, TV_PREFIX } from "../lib/config";
+import { TV_PREFIX } from "../lib/config";
 
 export default function TVPlayer() {
   const [items, setItems] = useState<TVItem[]>([]);
@@ -45,7 +45,7 @@ export default function TVPlayer() {
             <h2 className="text-2xl font-bold mb-4">Error en la Pantalla de TV</h2>
             <p className="max-w-xl">{error}</p>
             <p className="text-sm text-gray-400 mt-4">
-                Por favor, revisa el bucket de Supabase Storage ('{TV_BUCKET}/{TV_PREFIX}') para un archivo 'playlist.json' válido y accesible públicamente, y asegúrate de que todos los archivos multimedia referenciados estén subidos.
+                Por favor, revisa la carpeta '{TV_PREFIX}' en Firebase Storage para un archivo 'playlist.json' válido y accesible públicamente, y asegúrate de que todos los archivos multimedia referenciados estén subidos.
             </p>
         </div>
     );

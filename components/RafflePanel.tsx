@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
+import { collection, getDocs, addDoc, query, where, serverTimestamp } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
 import Card from './Card';
@@ -14,7 +15,8 @@ const RafflePanel: React.FC<RafflePanelProps> = ({ onRaffleDrawn }) => {
   const [prize, setPrize] = useState('');
   const eventDays = useMemo(() => {
     const dates = EVENT_DATES.split(',').map(d => new Date(d.trim()).getUTCDate());
-    return [...new Set(dates)].sort((a,b)=> a-b);
+    // FIX: Explicitly cast to Number to resolve TypeScript inference issue with arithmetic operation in sort.
+    return [...new Set(dates)].sort((a,b)=> Number(a) - Number(b));
   }, []);
   const [selectedDay, setSelectedDay] = useState<number>(eventDays[0] || 0);
 
@@ -35,33 +37,32 @@ const RafflePanel: React.FC<RafflePanelProps> = ({ onRaffleDrawn }) => {
     setError(null);
 
     try {
-      const { data: leads, error: fetchError } = await supabase
-        .from('leads')
-        .select('id, name, company, whatsapp')
-        .eq('event_code', EVENT_CODE)
-        .eq('org_id', ORG_UUID)
-        .eq('day', selectedDay);
+      const leadsRef = collection(db, 'leads');
+      const q = query(leadsRef,
+          where('event_code', '==', EVENT_CODE),
+          where('org_id', '==', ORG_UUID),
+          where('day', '==', selectedDay)
+      );
+      const querySnapshot = await getDocs(q);
       
-      if (fetchError) throw fetchError;
+      const leads = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lead));
 
-      if (!leads || leads.length === 0) {
+      if (leads.length === 0) {
         throw new Error(`No leads found for day ${selectedDay}.`);
       }
 
       const randomWinner = leads[Math.floor(Math.random() * leads.length)];
-      setWinner(randomWinner as Lead);
+      setWinner(randomWinner);
 
-      const { error: insertError } = await supabase.from('raffles').insert({
+      await addDoc(collection(db, 'raffles'), {
         org_id: ORG_UUID,
         event_code: EVENT_CODE,
         day: selectedDay,
         prize: prize.trim(),
         winner_lead_id: randomWinner.id,
-        drawn_at: new Date().toISOString(),
+        drawn_at: serverTimestamp(),
         status: 'Drawn',
       });
-
-      if (insertError) throw insertError;
       
       setStatus('drawn');
       onRaffleDrawn();

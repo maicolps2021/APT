@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
+import { collection, getDocs, addDoc, query, where, serverTimestamp } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import { mentions, Mention } from '../lib/content';
 import type { MentionLog } from '../types';
@@ -50,22 +51,19 @@ const MC: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
-        .from('mentions_log')
-        .select('mention_id')
-        .eq('event_code', EVENT_CODE)
-        .eq('org_id', ORG_UUID)
-        .eq('day', selectedDay);
-
-      if (error) throw error;
+      const logsRef = collection(db, 'mentions_log');
+      const q = query(logsRef,
+          where('event_code', '==', EVENT_CODE),
+          where('org_id', '==', ORG_UUID),
+          where('day', '==', selectedDay)
+      );
+      const querySnapshot = await getDocs(q);
       
-      // Fix: Explicitly type `new Set` as `<string>` to prevent TypeScript from inferring `Set<unknown>`
-      // when the `data` array is empty, which caused the type error on `setToldMentions`.
-      const toldIds = new Set<string>((data || []).map((log: { mention_id: string }) => log.mention_id));
+      const toldIds = new Set<string>(querySnapshot.docs.map(doc => doc.data().mention_id));
       setToldMentions(toldIds);
     } catch (err: any) {
         console.error('Error fetching mention logs:', err);
-        setError('Failed to load mention history. Please ensure the `mentions_log` table exists.');
+        setError('Failed to load mention history. Please ensure the `mentions_log` collection exists.');
     } finally {
         setLoading(false);
     }
@@ -87,17 +85,16 @@ const MC: React.FC = () => {
       type: mention.type,
     };
 
-    const { error } = await supabase.from('mentions_log').insert([payload]);
-
-    if (error) {
-      console.error('Error saving mention log:', error);
-      alert('Could not save mention. Please check the console.');
-    } else {
-      setToldMentions(prev => {
-        const newSet = new Set(prev);
-        newSet.add(mention.id);
-        return newSet;
-      });
+    try {
+        await addDoc(collection(db, 'mentions_log'), { ...payload, created_at: serverTimestamp() });
+        setToldMentions(prev => {
+            const newSet = new Set(prev);
+            newSet.add(mention.id);
+            return newSet;
+        });
+    } catch (error) {
+        console.error('Error saving mention log:', error);
+        alert('Could not save mention. Please check the console.');
     }
   };
 

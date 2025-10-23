@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
+import { collection, getDocs, doc, getDoc, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Raffle, Lead } from '../types';
 import Card from '../components/Card';
@@ -18,23 +19,40 @@ const Raffles: React.FC = () => {
         setLoading(true);
         setError(null);
         try {
-            const { data, error } = await supabase
-                .from('raffles')
-                .select(`
-                    *,
-                    winner:winner_lead_id (
-                        name,
-                        company
-                    )
-                `)
-                .eq('event_code', EVENT_CODE)
-                .eq('org_id', ORG_UUID)
-                .eq('status', 'Drawn')
-                .order('drawn_at', { ascending: false });
+            const rafflesRef = collection(db, 'raffles');
+            const q = query(rafflesRef, 
+                where('event_code', '==', EVENT_CODE),
+                where('org_id', '==', ORG_UUID),
+                where('status', '==', 'Drawn'),
+                orderBy('drawn_at', 'desc')
+            );
+            const querySnapshot = await getDocs(q);
 
-            if (error) throw error;
+            const rafflesData = querySnapshot.docs.map(doc => {
+                 const data = doc.data();
+                 const drawnAt = data.drawn_at instanceof Timestamp ? data.drawn_at.toDate().toISOString() : new Date().toISOString();
+                 return { id: doc.id, ...data, drawn_at: drawnAt } as Raffle;
+            });
+
+            // Fetch winner details for each raffle
+            const pastRafflesWithWinners: PastRaffle[] = await Promise.all(
+                rafflesData.map(async (raffle) => {
+                    let winnerData: Pick<Lead, 'name' | 'company'> | null = null;
+                    if (raffle.winner_lead_id) {
+                        const winnerRef = doc(db, 'leads', raffle.winner_lead_id);
+                        const winnerSnap = await getDoc(winnerRef);
+                        if (winnerSnap.exists()) {
+                            winnerData = {
+                                name: winnerSnap.data().name,
+                                company: winnerSnap.data().company,
+                            };
+                        }
+                    }
+                    return { ...raffle, winner: winnerData };
+                })
+            );
             
-            setPastRaffles((data as any[]) || []);
+            setPastRaffles(pastRafflesWithWinners);
         } catch (err: any) {
             console.error("Error fetching past raffles:", err);
             setError("Could not load past raffle data. Please check the console for details.");

@@ -1,10 +1,28 @@
-import { createClient } from '@supabase/supabase-js';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config';
+import { initializeApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import { getAuth, signInAnonymously } from 'firebase/auth';
+import { FIREBASE_CONFIG } from './config';
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error("Supabase URL (VITE_SUPABASE_URL) and Anon Key (VITE_SUPABASE_ANON_KEY) must be provided in environment variables.");
+// Validate Firebase configuration
+const requiredConfigKeys: (keyof typeof FIREBASE_CONFIG)[] = ['apiKey', 'authDomain', 'projectId', 'storageBucket'];
+const missingKeys = requiredConfigKeys.filter(key => !FIREBASE_CONFIG[key]);
+
+if (missingKeys.length > 0) {
+  throw new Error(`Firebase configuration is missing the following keys: ${missingKeys.join(', ')}. Please check your environment variables.`);
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: { persistSession: false },
+// Initialize Firebase
+const app = initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(app);
+const storage = getStorage(app);
+const auth = getAuth(app);
+
+// Authenticate the user anonymously to satisfy security rules
+// This allows the app to work for any user without a formal login process.
+signInAnonymously(auth).catch((error) => {
+  console.error("Anonymous sign-in failed:", error);
 });
+
+
+export { db, storage, auth };

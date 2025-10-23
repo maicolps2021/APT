@@ -1,6 +1,6 @@
-
 import React, { useState, useRef } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { db } from "../lib/supabaseClient"; // Renamed, but path is the same for simplicity
+import { collection, addDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore";
 import { EVENT_CODE, ORG_UUID } from "../lib/config";
 import type { Lead } from '../types';
 import { List, PlusCircle, RotateCcw } from 'lucide-react';
@@ -30,23 +30,23 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
     onReset();
   };
 
-  const createLead = async (payload: Partial<Lead>) => {
+  const createLead = async (payload: Omit<Lead, 'id' | 'created_at'>) => {
     setLoading(true);
     setErr(null);
   
-    const { error } = await supabase.from("leads").insert([payload]);
-    if (error) {
-      console.error("Error creating lead:", error);
-      setErr("Error al guardar. Esto puede ser por falta de permisos en la base de datos. Revisa que 'Row Level Security' (RLS) en la tabla 'leads' permita la inserción (INSERT).");
+    try {
+      const docPayload = { ...payload, created_at: serverTimestamp() };
+      const docRef = await addDoc(collection(db, "leads"), docPayload);
+      onSuccess({ ...payload, id: docRef.id, created_at: new Date().toISOString() });
       setLoading(false);
-    } else {
-      // Pass a simplified lead object to the success state
-      onSuccess(payload as Lead);
+    } catch (error) {
+      console.error("Error creating lead:", error);
+      setErr("Error al guardar. Revisa las reglas de seguridad de Firestore para permitir la escritura (write).");
       setLoading(false);
     }
   };
 
-  const buildPayloadFromForm = () => {
+  const buildPayloadFromForm = (): Omit<Lead, 'id' | 'created_at'> | null => {
     if (!formRef.current) return null;
     const f = new FormData(formRef.current);
     const slot: 'AM' | 'PM' = new Date().getHours() < 13 ? "AM" : "PM";
@@ -83,24 +83,36 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
       return;
     }
 
-    // Check for duplicates
-    const { data, error } = await supabase
-      .from('leads')
-      .select('*')
-      .eq('event_code', EVENT_CODE)
-      .or(`whatsapp.eq.${whatsapp},email.eq.${email}`);
-    
-    setLoading(false);
-    if (error) {
-      setErr("Could not verify lead: " + error.message);
-      return;
-    }
+    // Check for duplicates with Firestore
+    try {
+      const leadsRef = collection(db, 'leads');
+      const queries = [];
+      if (whatsapp) {
+          queries.push(query(leadsRef, where('event_code', '==', EVENT_CODE), where('whatsapp', '==', whatsapp)));
+      }
+      if (email) {
+          queries.push(query(leadsRef, where('event_code', '==', EVENT_CODE), where('email', '==', email)));
+      }
 
-    if (data && data.length > 0) {
-      setDuplicate(data[0] as Lead);
-    } else {
-      const payload = buildPayloadFromForm();
-      if(payload) await createLead(payload);
+      const querySnapshots = await Promise.all(queries.map(q => getDocs(q)));
+      
+      const foundDocs: Lead[] = [];
+      querySnapshots.forEach(snapshot => {
+          snapshot.forEach(doc => {
+              foundDocs.push({ id: doc.id, ...doc.data() } as Lead);
+          });
+      });
+      
+      setLoading(false);
+      if (foundDocs.length > 0) {
+        setDuplicate(foundDocs[0]);
+      } else {
+        const payload = buildPayloadFromForm();
+        if(payload) await createLead(payload);
+      }
+    } catch (error: any) {
+      setErr("Could not verify lead: " + error.message);
+      setLoading(false);
     }
   }
 

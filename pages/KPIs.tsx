@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { EVENT_CODE } from '../lib/config';
 import Card from '../components/Card';
-import type { KPIsData } from '../types';
+import type { KPIsData, Lead } from '../types';
 import { generateKpiAnalysis } from '../lib/geminiService';
 import { hasGemini } from '../lib/ai';
 import { RefreshCw, LoaderCircle } from 'lucide-react';
@@ -23,28 +24,33 @@ const KPIs: React.FC = () => {
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .from('v_kpis_conagui')
-        .select('*')
-        .eq('event_code', EVENT_CODE);
-
-      if (error) throw error;
+      const leadsRef = collection(db, 'leads');
+      const q = query(leadsRef, where('event_code', '==', EVENT_CODE));
+      const querySnapshot = await getDocs(q);
       
-      if (data && data.length > 0) {
-        const totalLeads = data.reduce((sum, row) => sum + (row.leads_total || 0), 0);
+      const leads = querySnapshot.docs.map(doc => doc.data() as Lead);
+
+      if (leads.length > 0) {
+        // Perform aggregation on the client-side
+        const totalLeads = leads.length;
         
-        const leadsByChannel: { [key: string]: number } = data.reduce((acc, row) => {
-            if (row.guia > 0) acc['Guia'] = (acc['Guia'] || 0) + row.guia;
-            if (row.agencia > 0) acc['Agencia'] = (acc['Agencia'] || 0) + row.agencia;
-            if (row.hotel > 0) acc['Hotel'] = (acc['Hotel'] || 0) + row.hotel;
-            if (row.mayorista > 0) acc['Mayorista'] = (acc['Mayorista'] || 0) + row.mayorista;
+        const leadsByChannel = leads.reduce((acc, lead) => {
+            if (lead.channel) {
+                acc[lead.channel] = (acc[lead.channel] || 0) + 1;
+            }
             return acc;
         }, {} as { [key: string]: number });
 
-        const leadsByDay: { day: number, count: number }[] = data.map(row => ({
-            day: row.day,
-            count: row.leads_total || 0,
-        })).sort((a, b) => a.day - b.day);
+        const leadsByDay = leads.reduce((acc, lead) => {
+            const day = lead.day;
+            const existing = acc.find(item => item.day === day);
+            if (existing) {
+                existing.count++;
+            } else {
+                acc.push({ day, count: 1 });
+            }
+            return acc;
+        }, [] as { day: number, count: number }[]).sort((a, b) => a.day - b.day);
 
         setKpis({
           total_leads: totalLeads,
@@ -57,7 +63,7 @@ const KPIs: React.FC = () => {
       }
     } catch (err: any) {
       console.error("Error fetching KPIs:", err);
-      setError("Failed to load KPI data. Please ensure the 'v_kpis_conagui' view exists and try again.");
+      setError("Failed to load KPI data. Please ensure the 'leads' collection exists and try again.");
       setKpis(null);
     } finally {
       setLoading(false);

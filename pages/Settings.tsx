@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { db, storage } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase
+import { collection, getDocs, doc, setDoc, query, where } from 'firebase/firestore';
+import { ref, listAll, getDownloadURL, uploadString } from 'firebase/storage';
 import { 
-    TV_BUCKET, 
     TV_PREFIX,
     ORG_UUID,
     EVENT_CODE,
@@ -35,7 +35,6 @@ const Settings: React.FC = () => {
         "Event Code": EVENT_CODE,
         "Event Dates": EVENT_DATES,
         "Contact WhatsApp": WHATSAPP,
-        "TV Storage Bucket": TV_BUCKET,
         "TV Media Folder": TV_PREFIX,
         "BuilderBot ID": BUILDERBOT_ID ? 'Configured' : 'Not Configured',
     };
@@ -44,27 +43,33 @@ const Settings: React.FC = () => {
         setLoading(true);
         setError(null);
         try {
-            // Fetch TV Playlist data
-            const { data: fileList, error: listError } = await supabase.storage
-                .from(TV_BUCKET)
-                .list(TV_PREFIX, { limit: 100, sortBy: { column: 'name', order: 'asc' } });
-            if (listError) throw listError;
+            // Fetch TV Playlist data from Firebase Storage
+            const folderRef = ref(storage, TV_PREFIX);
+            const res = await listAll(folderRef);
             
-            const mediaFiles = fileList.filter(file => file.name !== 'playlist.json');
+            const mediaFilesPromises = res.items.filter(item => item.name !== 'playlist.json').map(async (itemRef) => ({
+                name: itemRef.name,
+                url: await getDownloadURL(itemRef)
+            }));
+            const mediaFiles = await Promise.all(mediaFilesPromises);
+
             let existingPlaylist: TVItem[] = [];
             try {
-                const { data: playlistBlob } = await supabase.storage.from(TV_BUCKET).download(`${TV_PREFIX}/playlist.json`);
-                if (playlistBlob) {
-                    existingPlaylist = JSON.parse(await playlistBlob.text()).items || [];
+                const playlistRef = ref(storage, `${TV_PREFIX}/playlist.json`);
+                const playlistUrl = await getDownloadURL(playlistRef);
+                const response = await fetch(playlistUrl);
+                if (response.ok) {
+                    existingPlaylist = (await response.json()).items || [];
                 }
-            } catch (e) { console.warn("Could not parse playlist.json, starting fresh.", e); }
+            } catch (e) { console.warn("Could not load playlist.json, starting fresh.", e); }
             
             const finalPlaylist: TVItem[] = mediaFiles.map((file): TVItem => {
-                const existing = existingPlaylist.find(item => item.src.split('/').pop() === file.name);
-                if (existing) return existing;
+                const existing = existingPlaylist.find(item => item.src.endsWith(file.name));
+                if (existing) return { ...existing, src: file.url }; // Update with fresh URL
+                
                 const isVideo = /\.(mp4|webm|mov)$/i.test(file.name);
                 return { 
-                    src: file.name, 
+                    src: file.url,
                     type: isVideo ? 'video' : 'image', 
                     overlay: '', 
                     qr: false, 
@@ -73,25 +78,19 @@ const Settings: React.FC = () => {
             });
             setPlaylistItems(finalPlaylist);
 
-            // Fetch Message Templates
-            const { data: templatesData, error: templatesError } = await supabase
-                .from('message_templates')
-                .select('id, channel, template')
-                .eq('org_id', ORG_UUID)
-                .eq('event_code', EVENT_CODE);
-
-            if (templatesError) {
-                 console.error("Templates error:", templatesError);
-                 throw new Error("Could not load message templates. Make sure the 'message_templates' table exists and RLS policies are set.");
-            }
+            // Fetch Message Templates from Firestore
+            const templatesRef = collection(db, 'message_templates');
+            const q = query(templatesRef, where('org_id', '==', ORG_UUID), where('event_code', '==', EVENT_CODE));
+            const querySnapshot = await getDocs(q);
             
+            const templatesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const templatesMap = new Map(templatesData.map(t => [t.channel, t]));
             const initialTemplates = LEAD_ROLES.map(role => templatesMap.get(role) || { channel: role, template: '' });
-            setTemplates(initialTemplates);
+            setTemplates(initialTemplates as MessageTemplate[]);
 
         } catch (err: any) {
             console.error("Error fetching settings data:", err);
-            setError(err.message || "Failed to load data. Check permissions and table/file structures.");
+            setError(err.message || "Failed to load data. Check permissions and collection/file structures.");
         } finally {
             setLoading(false);
         }
@@ -106,26 +105,34 @@ const Settings: React.FC = () => {
         setError(null);
         try {
             if (type === 'playlist') {
-                const playlistObject = { items: playlistItems };
+                // We need to save relative paths, not the full download URLs
+                const playlistToSave = playlistItems.map(item => {
+                    const url = new URL(item.src);
+                    const path = decodeURIComponent(url.pathname).split('/').pop();
+                    return { ...item, src: path };
+                });
+                const playlistObject = { items: playlistToSave };
                 const playlistString = JSON.stringify(playlistObject, null, 2);
-                const { error: saveError } = await supabase.storage
-                    .from(TV_BUCKET)
-                    .upload(`${TV_PREFIX}/playlist.json`, playlistString, { upsert: true, contentType: 'application/json' });
-                if (saveError) throw saveError;
+                const playlistRef = ref(storage, `${TV_PREFIX}/playlist.json`);
+                await uploadString(playlistRef, playlistString, 'raw', { contentType: 'application/json' });
+
             } else if (type === 'templates') {
-                const templatesToUpsert = templates.map(t => ({
-                    org_id: ORG_UUID,
-                    event_code: EVENT_CODE,
-                    channel: t.channel,
-                    template: t.template,
-                }));
-                const { error: upsertError } = await supabase.from('message_templates').upsert(templatesToUpsert, { onConflict: 'org_id,event_code,channel' });
-                if (upsertError) throw upsertError;
+                const savePromises = templates.map(t => {
+                    const docId = `${ORG_UUID}_${EVENT_CODE}_${t.channel}`;
+                    const templateRef = doc(db, 'message_templates', docId);
+                    return setDoc(templateRef, {
+                        org_id: ORG_UUID,
+                        event_code: EVENT_CODE,
+                        channel: t.channel,
+                        template: t.template,
+                    });
+                });
+                await Promise.all(savePromises);
             }
             alert(`${type === 'playlist' ? 'Playlist' : 'Templates'} saved successfully!`);
         } catch (err: any) {
             console.error(`Error saving ${type}:`, err);
-            setError(`Failed to save ${type}. Error: ${err.message}. Check Supabase RLS policies.`);
+            setError(`Failed to save ${type}. Error: ${err.message}. Check Firebase security rules.`);
         } finally {
             setSaving(false);
         }
@@ -212,7 +219,7 @@ const Settings: React.FC = () => {
                                 onDragOver={(e) => e.preventDefault()} onDrop={() => handleDrop(index)} onDragEnd={() => setDraggedItemIndex(null)}
                              >
                                 <div className="col-span-1 flex justify-center items-center cursor-move text-gray-400 hover:text-gray-600" title="Drag to reorder"><GripVertical /></div>
-                                <div className="col-span-11 md:col-span-4"><p className="font-semibold text-sm truncate text-gray-800 dark:text-gray-200" title={item.src}>{item.src.split('/').pop()}</p><p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{item.type}</p></div>
+                                <div className="col-span-11 md:col-span-4"><p className="font-semibold text-sm truncate text-gray-800 dark:text-gray-200" title={item.src}>{item.src.split('/').pop().split('?')[0]}</p><p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{item.type}</p></div>
                                 <div className="col-span-12 md:col-span-5"><input type="text" placeholder="Overlay text..." value={item.overlay || ''} onChange={(e) => handleUpdateItem(index, { overlay: e.target.value })} className="input text-sm py-1"/></div>
                                 <div className="col-span-12 md:col-span-2 flex items-center justify-start md:justify-center gap-2">
                                      <label htmlFor={`qr-${index}`} className="flex items-center cursor-pointer text-sm text-gray-600 dark:text-gray-300">
@@ -221,7 +228,7 @@ const Settings: React.FC = () => {
                                     </label>
                                 </div>
                              </div>
-                        )) : <p className="text-center text-gray-500 py-8">No media files found in '{TV_BUCKET}/{TV_PREFIX}'.</p>}
+                        )) : <p className="text-center text-gray-500 py-8">No media files found in your Storage folder: '{TV_PREFIX}'.</p>}
                      </div>
                  )}
             </Card>

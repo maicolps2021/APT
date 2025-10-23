@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.25.0",
-    "@supabase/supabase-js": "^2.76.1",
+    "firebase": "^10.12.4",
     "lucide-react": "^0.417.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",

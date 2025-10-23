@@ -1,6 +1,6 @@
-
 import type { Lead } from '../types';
-import { supabase } from './supabaseClient';
+import { db } from './supabaseClient'; // Path kept for simplicity, points to Firebase now
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { ORG_UUID, EVENT_CODE } from './config';
 
 /**
@@ -18,20 +18,26 @@ export const getPersonalizedWhatsAppMessage = async (lead: Lead): Promise<string
     }
 
     try {
-        const { data, error } = await supabase
-            .from('message_templates')
-            .select('template')
-            .eq('org_id', ORG_UUID)
-            .eq('event_code', EVENT_CODE)
-            .eq('channel', lead.role)
-            .single();
-        
-        if (error || !data || !data.template) {
+        const templatesRef = collection(db, 'message_templates');
+        const q = query(templatesRef,
+            where('org_id', '==', ORG_UUID),
+            where('event_code', '==', EVENT_CODE),
+            where('channel', '==', lead.role)
+        );
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
             console.warn(`No template found for role: ${lead.role}. Using fallback.`);
             return fallbackMessage;
         }
+        
+        const templateDoc = querySnapshot.docs[0].data();
 
-        return data.template.replace(/\{nombre\}/g, name);
+        if (!templateDoc || !templateDoc.template) {
+            return fallbackMessage;
+        }
+
+        return templateDoc.template.replace(/\{nombre\}/g, name);
 
     } catch (err) {
         console.error("Error fetching message template:", err);

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
+import { collection, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import { mentions } from '../lib/content';
 import { exportLeadsCsv } from '../lib/export';
@@ -29,16 +30,21 @@ const Materials: React.FC = () => {
     setIsDownloading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('event_code', EVENT_CODE)
-        .eq('org_id', ORG_UUID)
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
+        const leadsRef = collection(db, 'leads');
+        const q = query(leadsRef, 
+          where('event_code', '==', EVENT_CODE), 
+          where('org_id', '==', ORG_UUID),
+          orderBy('created_at', 'asc')
+        );
+        const querySnapshot = await getDocs(q);
+        const leadsData = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          // Convert Firestore Timestamp to ISO string for consistency
+          const createdAt = data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : new Date().toISOString();
+          return { id: doc.id, ...data, created_at: createdAt } as Lead
+        });
       
-      exportLeadsCsv(data as Lead[]);
+      exportLeadsCsv(leadsData);
     } catch (err: any) {
       console.error("Error exporting CSV:", err);
       setError("Failed to export leads. Please check the console.");

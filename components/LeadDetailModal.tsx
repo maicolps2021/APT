@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Lead } from '../types';
-import { supabase } from '../lib/supabaseClient';
+import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { X, Save, LoaderCircle } from 'lucide-react';
 
 interface LeadDetailModalProps {
@@ -30,7 +30,7 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
 
   const handleDateTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    // Convert local datetime string to ISO 8601 string in UTC for Supabase
+    // Convert local datetime string to ISO 8601 string for consistency
     const date = value ? new Date(value).toISOString() : null;
     setFormData(prev => ({ ...prev, [name]: date }));
   };
@@ -48,7 +48,6 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
     setIsSaving(true);
     setError(null);
     try {
-      // Only include fields that can be modified in this form to avoid sending the primary key (id)
       const updateData = {
           next_step: formData.next_step,
           scoring: formData.scoring,
@@ -57,20 +56,14 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
           notes: formData.notes,
       };
 
-      const { data, error } = await supabase
-        .from('leads')
-        .update(updateData)
-        .eq('id', lead.id)
-        .select()
-        .single();
-      
-      if (error) throw error;
+      const leadRef = doc(db, 'leads', lead.id);
+      await updateDoc(leadRef, updateData);
 
-      onSave(data as Lead);
+      onSave({ ...lead, ...updateData });
       onClose();
     } catch (err: any) {
       console.error("Error updating lead:", err);
-      setError("Failed to save changes. Please check permissions (RLS for UPDATE) and try again.");
+      setError("Failed to save changes. Please check Firestore security rules for UPDATE permission.");
     } finally {
       setIsSaving(false);
     }
