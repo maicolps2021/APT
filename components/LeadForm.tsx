@@ -1,5 +1,4 @@
-
-import React, { useState, FormEvent, useMemo } from 'react';
+import React, { useState, FormEvent, useMemo, useRef } from 'react';
 import { db } from '../lib/supabaseClient';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ORG_UUID, EVENT_CODE, EVENT_DATES } from '../lib/config';
@@ -39,6 +38,8 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
   const [formData, setFormData] = useState(initialFormData);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
 
   const canSubmit = useMemo(() => {
     return formData.name.trim().length > 2 && (formData.whatsapp?.trim() || formData.email?.trim());
@@ -70,7 +71,6 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
       const createdLead: Lead = { ...newLeadData, id: docRef.id, created_at: new Date().toISOString() };
       
       onSuccess(createdLead);
-      setFormData(initialFormData); // Reset form after success
 
       if (hasGemini()) {
         const welcomeMessage = await generateWelcomeMessage(createdLead);
@@ -83,6 +83,14 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
           welcomeMessage,
         });
       }
+      
+      // Kiosk mode: reset form and focus first input for next entry
+      setFormData(initialFormData);
+      onReset();
+      queueMicrotask(() => {
+        nameInputRef.current?.focus();
+      });
+
     } catch (err: any) {
       console.error("Error saving lead:", err);
       setError("Could not save the lead. Please check the console for details.");
@@ -118,7 +126,7 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label htmlFor="name" className="label">Full Name</label>
-          <input id="name" name="name" type="text" value={formData.name} onChange={handleChange} className="input" required />
+          <input ref={nameInputRef} id="name" name="name" type="text" value={formData.name} onChange={handleChange} className="input" required />
         </div>
         <div>
           <label htmlFor="company" className="label">Company (optional)</label>
