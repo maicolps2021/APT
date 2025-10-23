@@ -17,9 +17,18 @@ export const FIREBASE_CONFIG = {
 export const ORG_UUID = env.VITE_ORG_UUID;
 export const EVENT_CODE = env.VITE_EVENT_CODE;
 export const EVENT_DATES = env.VITE_EVENT_DATES ?? '2025-10-27,2025-10-28,2025-10-29';
-export const WHATSAPP = env.VITE_WHATSAPP ?? '+50663520923';
 export const TV_BUCKET = env.VITE_TV_BUCKET ?? 'tv'; // This now refers to the root folder in Firebase Storage
 export const TV_PREFIX = env.VITE_TV_PREFIX ?? 'conagui2025';
 export const BUILDERBOT_API_KEY = env.VITE_BUILDERBOT_API_KEY;
 export const BUILDERBOT_ID = env.VITE_BUILDERBOT_ID;
 export const VITE_API_KEY = env.VITE_API_KEY;
+
+// Messaging Configuration
+// Preferred messenger: 'builderbot' | 'wa' | 'none'
+export const MESSENGER = (env.VITE_MESSENGER || 'wa') as 'builderbot'|'wa'|'none';
+
+// Auto-send messages (for future use)
+export const MSG_AUTO = (env.VITE_MSG_AUTO || 'false') === 'true';
+
+// Fallback WhatsApp number
+export const WHATSAPP = env.VITE_WHATSAPP || '';
