@@ -1,322 +1,175 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
-import { collection, getDocs, query, where, orderBy, deleteDoc, doc, Timestamp, updateDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { db } from '../lib/supabaseClient'; // This is Firebase
+import { collection, getDocs, query, where, orderBy, Timestamp } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import type { Lead } from '../types';
-import Card from '../components/Card';
-import { getPersonalizedWhatsAppMessage, generateEmailLink } from '../lib/templates';
-import { RefreshCw, Mail, Send, LoaderCircle, CheckCircle, XCircle, Trash2, Edit } from 'lucide-react';
-import { hasBuilderBot, sendBuilderBotMessage } from '../services/builderbotService';
-import LeadDetailModal from '../components/LeadDetailModal';
 import { useAuth } from '../contexts/AuthContext';
-
-type ContactStatus = 'idle' | 'sending' | 'sent' | 'error';
-
-const nextStepLabels: { [key: string]: string } = {
-  'Condiciones': 'Enviar Condiciones',
-  'Reunion': 'Agendar Reunión',
-  'Llamada15': 'Llamada 15min',
-  'FamTrip': 'Invitar a FamTrip'
-};
-
+import { getPersonalizedWhatsAppMessage, generateEmailLink } from '../lib/templates';
+import LeadDetailModal from '../components/LeadDetailModal';
+import { Search, Mail, MessageSquare, Edit, RefreshCw, LoaderCircle } from 'lucide-react';
 
 const LeadList: React.FC = () => {
-  const { status: authStatus, error: authError } = useAuth();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [contactStatus, setContactStatus] = useState<Record<string, ContactStatus>>({});
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+    const { status: authStatus, error: authError } = useAuth();
+    const [leads, setLeads] = useState<Lead[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+    
+    const fetchLeads = useCallback(async () => {
+        if (authStatus !== 'authenticated') {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
+        setError(null);
 
-  const fetchLeads = useCallback(async () => {
-    if (authStatus !== 'authenticated') {
-        setLoading(false);
-        return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const leadsRef = collection(db, 'leads');
-      const q = query(leadsRef, 
-        where('event_code', '==', EVENT_CODE), 
-        where('org_id', '==', ORG_UUID),
-        orderBy('created_at', 'desc')
-      );
-      const querySnapshot = await getDocs(q);
-      const leadsData = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        // Duck-typing to check for Firestore Timestamp object to avoid TS build error
-        const createdAt = data.created_at && typeof data.created_at.toDate === 'function' 
-          ? data.created_at.toDate().toISOString() 
-          : new Date().toISOString();
-        return { id: doc.id, ...data, created_at: createdAt } as Lead
-      });
-      setLeads(leadsData);
-    } catch (err: any) {
-      console.error("Error fetching leads:", err);
-      setError("Failed to load leads. Please check your Firestore security rules and collection name.");
-    } finally {
-      setLoading(false);
-    }
-  }, [authStatus]);
-
-  useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
-  
-  const handleDeleteLead = async (leadId: string, leadName: string) => {
-    if (!window.confirm(`¿Estás seguro de que quieres eliminar permanentemente el lead "${leadName}"? Esta acción no se puede deshacer.`)) {
-      return;
-    }
-    setDeletingId(leadId);
-    setError(null);
-    try {
-      await deleteDoc(doc(db, "leads", leadId));
-      setLeads(prevLeads => prevLeads.filter(lead => lead.id !== leadId));
-    } catch (err: any) {
-      console.error("Error deleting lead:", err);
-      setError("Error al eliminar. Revisa las reglas de seguridad de Firestore para permitir la operación de borrado (delete).");
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const handleSaveLead = (updatedLead: Lead) => {
-      setLeads(prevLeads => prevLeads.map(l => l.id === updatedLead.id ? updatedLead : l));
-  };
-
-  const filteredLeads = useMemo(() => {
-    if (!searchTerm) return leads;
-    return leads.filter(lead =>
-      lead.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lead.company?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [leads, searchTerm]);
-
-  const handleSendBuilderBot = async (lead: Lead) => {
-    setContactStatus(prev => ({ ...prev, [lead.id]: 'sending' }));
-    try {
-      const message = await getPersonalizedWhatsAppMessage(lead);
-      if (!lead.whatsapp) throw new Error("WhatsApp number is missing.");
-      
-      await sendBuilderBotMessage(lead.whatsapp, message);
-
-      // If message sent successfully, update the lead's next step
-      const leadRef = doc(db, 'leads', lead.id);
-      await updateDoc(leadRef, {
-        next_step: 'Condiciones'
-      });
-
-      // Update local state for immediate UI feedback
-      setLeads(prevLeads => 
-        prevLeads.map(l => 
-          l.id === lead.id ? { ...l, next_step: 'Condiciones' } : l
-        )
-      );
-      
-      setContactStatus(prev => ({ ...prev, [lead.id]: 'sent' }));
-    } catch (err) {
-      console.error("Failed to send message via BuilderBot", err);
-      setContactStatus(prev => ({ ...prev, [lead.id]: 'error' }));
-    } finally {
-        setTimeout(() => {
-            setContactStatus(prev => ({ ...prev, [lead.id]: 'idle' }));
-        }, 3000);
-    }
-  };
-
-  const getActionIcon = (lead: Lead) => {
-    const status = contactStatus[lead.id] || 'idle';
-    switch (status) {
-        case 'sending':
-            return <LoaderCircle className="h-5 w-5 text-gray-400 animate-spin" />;
-        case 'sent':
-            return <CheckCircle className="h-5 w-5 text-green-500" />;
-        case 'error':
-            return <XCircle className="h-5 w-5 text-red-500" />;
-        default:
-            return (
-                <button onClick={() => handleSendBuilderBot(lead)} title="Send via BuilderBot" className="text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
-                    <Send className="h-5 w-5" />
-                </button>
+        try {
+            const leadsRef = collection(db, 'leads');
+            const q = query(leadsRef, 
+                where('event_code', '==', EVENT_CODE), 
+                where('org_id', '==', ORG_UUID),
+                orderBy('created_at', 'desc')
             );
-    }
-  };
+            const querySnapshot = await getDocs(q);
+            const leadsData = querySnapshot.docs.map(doc => {
+                const data = doc.data();
+                const createdAt = data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : new Date().toISOString();
+                return { id: doc.id, ...data, created_at: createdAt } as Lead;
+            });
+            setLeads(leadsData);
+        } catch (err: any) {
+            console.error("Error fetching leads:", err);
+            setError("Failed to load leads. Please check Firestore security rules.");
+        } finally {
+            setLoading(false);
+        }
+    }, [authStatus]);
 
-  const leadActions = (lead: Lead) => (
-    <div className="flex items-center justify-center gap-4 text-gray-400">
-        <button onClick={() => setSelectedLead(lead)} title="Edit Details" className="hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
-            <Edit className="h-5 w-5" />
-        </button>
-        {hasBuilderBot() && lead.whatsapp && getActionIcon(lead)}
-        {lead.email && (
-        <a href={generateEmailLink(lead)} target="_blank" rel="noopener noreferrer" title="Send Email Template" className="hover:text-blue-500 dark:hover:text-blue-400 transition-colors">
-            <Mail className="h-5 w-5" />
-        </a>
-        )}
-        <button
-          onClick={() => handleDeleteLead(lead.id, lead.name)}
-          disabled={deletingId === lead.id}
-          title="Delete Lead"
-          className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {deletingId === lead.id ? (
-            <LoaderCircle className="h-5 w-5 animate-spin" />
-          ) : (
-            <Trash2 className="h-5 w-5" />
-          )}
-        </button>
-    </div>
-  );
+    useEffect(() => {
+        fetchLeads();
+    }, [fetchLeads]);
 
-  const renderContent = () => {
+    const handleWhatsAppClick = async (lead: Lead) => {
+        if (!lead.whatsapp) {
+            alert("No WhatsApp number available for this lead.");
+            return;
+        }
+        const message = await getPersonalizedWhatsAppMessage(lead);
+        const waLink = `https://wa.me/${lead.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
+        window.open(waLink, '_blank');
+    };
+
+    const handleSaveLead = (updatedLead: Lead) => {
+        setLeads(prevLeads => prevLeads.map(l => l.id === updatedLead.id ? updatedLead : l));
+        setSelectedLead(null);
+    };
+
+    const filteredLeads = useMemo(() => {
+        return leads.filter(lead => {
+            const search = searchTerm.toLowerCase();
+            return (
+                lead.name.toLowerCase().includes(search) ||
+                (lead.company && lead.company.toLowerCase().includes(search)) ||
+                (lead.email && lead.email.toLowerCase().includes(search)) ||
+                (lead.whatsapp && lead.whatsapp.includes(search))
+            );
+        });
+    }, [leads, searchTerm]);
+
+    const renderLeadRow = (lead: Lead) => (
+        <tr key={lead.id} className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800/50">
+            <td className="px-4 py-3">
+                <p className="font-semibold text-gray-900 dark:text-white">{lead.name}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{lead.company || 'N/A'}</p>
+            </td>
+            <td className="px-4 py-3">
+                {lead.whatsapp && <p className="text-sm">{lead.whatsapp}</p>}
+                {lead.email && <p className="text-sm">{lead.email}</p>}
+            </td>
+            <td className="px-4 py-3 text-sm">{lead.role || 'N/A'}</td>
+            <td className="px-4 py-3 text-sm text-center">{lead.scoring || '-'}</td>
+            <td className="px-4 py-3 text-sm">{lead.next_step || 'N/A'}</td>
+            <td className="px-4 py-3">
+                <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => handleWhatsAppClick(lead)} disabled={!lead.whatsapp} className="p-2 rounded-md hover:bg-green-100 dark:hover:bg-green-900/50 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <MessageSquare className="h-5 w-5 text-green-500" />
+                    </button>
+                    <a href={lead.email ? generateEmailLink(lead) : '#'} target="_blank" rel="noreferrer" className={`p-2 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/50 ${!lead.email ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <Mail className="h-5 w-5 text-blue-500" />
+                    </a>
+                    <button onClick={() => setSelectedLead(lead)} className="p-2 rounded-md hover:bg-yellow-100 dark:hover:bg-yellow-900/50">
+                        <Edit className="h-5 w-5 text-yellow-500" />
+                    </button>
+                </div>
+            </td>
+        </tr>
+    );
+    
     if (authStatus === 'initializing') {
-        return <p className="text-center text-gray-500 dark:text-gray-400 p-8">Authenticating...</p>;
+        return <div className="text-center p-8">Authenticating...</div>
     }
     if (authStatus === 'error') {
-        return <p className="text-center text-red-500 p-8">Authentication failed: {authError}. Please check your Firebase project configuration and enable Anonymous sign-in.</p>;
-    }
-    if (loading) {
-        return <p className="text-center text-gray-500 dark:text-gray-400 p-8">Loading leads...</p>;
-    }
-    if (error) {
-        return <p className="text-center text-red-500 p-8">{error}</p>;
+        return <div className="text-center p-4 bg-red-100 border border-red-300 rounded-lg text-red-700 dark:text-red-300">Authentication failed: {authError}.</div>
     }
 
     return (
-        <>
-            {/* Desktop Table View */}
-            <div className="overflow-x-auto hidden md:block">
-                <table className="min-w-full text-gray-800 dark:text-gray-200">
-                <thead className="border-b border-gray-200 dark:border-gray-700">
-                    <tr>
-                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
-                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Company</th>
-                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contact</th>
-                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Details</th>
-                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Registered</th>
-                    <th className="py-3 px-4 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {filteredLeads.length > 0 ? filteredLeads.map(lead => (
-                    <tr key={lead.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                        <td className="py-3 px-4 whitespace-nowrap">
-                            <div className="font-semibold text-gray-900 dark:text-white">{lead.name}</div>
-                            <div className="text-sm text-gray-500 dark:text-gray-400">{lead.role}</div>
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">{lead.company}</td>
-                        <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
-                            {lead.whatsapp && <div>WA: {lead.whatsapp}</div>}
-                            {lead.email && <div>{lead.email}</div>}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
-                            {lead.next_step && <div className="font-semibold text-blue-600 dark:text-blue-400">Next: {nextStepLabels[lead.next_step] || lead.next_step}</div>}
-                            {lead.meeting_at && <div className="text-green-600 dark:text-green-400 font-medium">Meeting: {new Date(lead.meeting_at).toLocaleString()}</div>}
-                            {lead.notes && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate max-w-xs" title={lead.notes}>Note: {lead.notes}</div>}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                            {new Date(lead.created_at).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                            {leadActions(lead)}
-                        </td>
-                    </tr>
-                    )) : (
-                    <tr>
-                        <td colSpan={6} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
-                        {searchTerm ? 'No leads match your search.' : 'No leads have been captured yet.'}
-                        </td>
-                    </tr>
-                    )}
-                </tbody>
-                </table>
-            </div>
-
-            {/* Mobile Card View */}
-            <div className="md:hidden space-y-4">
-                {filteredLeads.length > 0 ? filteredLeads.map(lead => (
-                    <div key={lead.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <p className="font-bold text-lg text-gray-900 dark:text-white">{lead.name}</p>
-                                <p className="text-sm text-gray-600 dark:text-gray-300">{lead.company}</p>
-                                <p className="text-xs text-blue-500 dark:text-blue-400 font-semibold mt-1">{lead.role}</p>
-                            </div>
-                            {leadActions(lead)}
-                        </div>
-                        <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 text-sm space-y-2">
-                            {(lead.whatsapp || lead.email) && (
-                                <div>
-                                    <h4 className="font-semibold text-gray-700 dark:text-gray-200">Contact</h4>
-                                    <p className="text-gray-500 dark:text-gray-400">{lead.whatsapp}</p>
-                                    <p className="text-gray-500 dark:text-gray-400">{lead.email}</p>
-                                </div>
-                            )}
-                            {(lead.next_step || lead.meeting_at) && (
-                                <div>
-                                    <h4 className="font-semibold text-gray-700 dark:text-gray-200">Status</h4>
-                                    {lead.next_step && <p className="font-semibold text-blue-600 dark:text-blue-400">Next: {nextStepLabels[lead.next_step] || lead.next_step}</p>}
-                                    {lead.meeting_at && <p className="text-green-600 dark:text-green-400 font-medium">Meeting: {new Date(lead.meeting_at).toLocaleString()}</p>}
-                                </div>
-                            )}
-                            <p className="text-xs text-gray-400 dark:text-gray-500 pt-2">
-                                Registered: {new Date(lead.created_at).toLocaleString()}
-                            </p>
-                        </div>
+        <div className="mx-auto max-w-7xl">
+            <div className="flex flex-col md:flex-row justify-between items-center mb-6">
+                <div className="text-center md:text-left">
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Lead List</h1>
+                    <p className="text-gray-500 dark:text-gray-400 mt-1">Total Leads: {leads.length}</p>
+                </div>
+                <div className="flex items-center gap-4 mt-4 md:mt-0 w-full md:w-auto">
+                    <div className="relative w-full md:w-64">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search by name, company..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="input pl-10 w-full"
+                        />
                     </div>
-                )) : (
-                    <p className="py-8 text-center text-gray-500 dark:text-gray-400">
-                        {searchTerm ? 'No leads match your search.' : 'No leads have been captured yet.'}
-                    </p>
-                )}
+                    <button onClick={fetchLeads} disabled={loading} className="p-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700">
+                        {loading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />}
+                    </button>
+                </div>
             </div>
-        </>
-    );
-  }
 
-  return (
-    <>
-      <div className="mx-auto max-w-7xl">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-          <div className="text-center md:text-left">
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100">Captured Leads</h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-2">A real-time list of all registered attendees for {EVENT_CODE}.</p>
-          </div>
-          <div className="flex w-full md:w-auto items-center gap-2">
-            <input
-              type="text"
-              placeholder="Search by name or company..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="input w-full md:w-64"
-            />
-            <button
-              onClick={fetchLeads}
-              disabled={loading || authStatus !== 'authenticated'}
-              className="flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-2 font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:bg-gray-200 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-all h-[49px]"
-            >
-              <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-800">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Contact</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Details</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Role</th>
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Scoring</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Next Step</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {loading && <tr><td colSpan={6} className="text-center p-8 text-gray-500 dark:text-gray-400">Loading leads...</td></tr>}
+                            {error && <tr><td colSpan={6} className="text-center p-4 text-red-500">{error}</td></tr>}
+                            {!loading && filteredLeads.length === 0 && <tr><td colSpan={6} className="text-center p-8 text-gray-500 dark:text-gray-400">No leads found.</td></tr>}
+                            {!loading && filteredLeads.map(renderLeadRow)}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {selectedLead && (
+                <LeadDetailModal
+                    isOpen={!!selectedLead}
+                    lead={selectedLead}
+                    onClose={() => setSelectedLead(null)}
+                    onSave={handleSaveLead}
+                />
+            )}
         </div>
-        <Card>
-            {renderContent()}
-        </Card>
-      </div>
-
-      {selectedLead && (
-        <LeadDetailModal
-            lead={selectedLead}
-            isOpen={!!selectedLead}
-            onClose={() => setSelectedLead(null)}
-            onSave={handleSaveLead}
-        />
-      )}
-    </>
-  );
+    );
 };
 
 export default LeadList;
