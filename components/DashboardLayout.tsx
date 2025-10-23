@@ -1,9 +1,9 @@
+
 import React, { useState, useEffect, ReactNode } from "react";
 import {
   Home as HomeIcon,
   Camera,
   List,
-  Calendar,
   BarChart3,
   Ticket,
   FileText,
@@ -26,7 +26,6 @@ const navItems = [
     { title: "Home", href: "#/", Icon: HomeIcon },
     { title: "Capture Lead", href: "#/capture", Icon: Camera },
     { title: "Lead List", href: "#/leads", Icon: List },
-    { title: "Meetings", href: "#/meetings", Icon: Calendar },
     { title: "KPIs", href: "#/kpis", Icon: BarChart3 },
     { title: "Raffles", href: "#/raffles", Icon: Ticket },
     { title: "Materials", href: "#/materials", Icon: FileText },

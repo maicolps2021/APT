@@ -1,10 +1,9 @@
 
-
 import React, { useState, useRef } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { EVENT_CODE, ORG_UUID } from "../lib/config";
 import type { Lead } from '../types';
-import { List, Calendar, PlusCircle, RotateCcw } from 'lucide-react';
+import { List, PlusCircle, RotateCcw } from 'lucide-react';
 
 const mapDay = () => {
   const d = new Date().getDate();
@@ -135,10 +134,6 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
                 <a href="#/leads" className="w-full block rounded-lg bg-gray-200 dark:bg-gray-700 py-3 font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2">
                     <List size={18} />
                     Ver Lista de Leads
-                </a>
-                 <a href="#/meetings" className="w-full block rounded-lg bg-gray-200 dark:bg-gray-700 py-3 font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2">
-                    <Calendar size={18} />
-                    Agendar Reunión
                 </a>
             </div>
         </div>

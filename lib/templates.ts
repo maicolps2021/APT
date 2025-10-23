@@ -1,27 +1,44 @@
 
-
-
 import type { Lead } from '../types';
+import { supabase } from './supabaseClient';
+import { ORG_UUID, EVENT_CODE } from './config';
 
 /**
- * Generates a pre-filled WhatsApp message link or just the message text for a given lead.
- * @param lead The lead object containing contact details.
- * @param textOnly If true, returns only the message string.
- * @returns A string URL for a wa.me link or the message text.
+ * Fetches the personalized WhatsApp message template from the database based on the lead's role.
+ * Falls back to a generic message if no template is found.
+ * @param lead The lead object.
+ * @returns A promise that resolves to the personalized message string.
  */
-export const generateWhatsAppLink = (lead: Lead, textOnly = false): string => {
-    const name = lead.name.split(' ')[0]; // Use first name for a personal touch
-    const message = `¡Hola ${name}! Gracias por visitarnos en el stand de Arenal Private Tours by Small Groups. En breve te enviaremos la información de colaborador a tu correo. ¡Saludos!`;
-    
-    if (textOnly) {
-        return message;
+export const getPersonalizedWhatsAppMessage = async (lead: Lead): Promise<string> => {
+    const name = lead.name.split(' ')[0]; // Use first name
+    const fallbackMessage = `¡Hola ${name}! Gracias por visitarnos en el stand de Arenal Private Tours by Small Groups. En breve te enviaremos la información de colaborador a tu correo. ¡Saludos!`;
+
+    if (!lead.role) {
+        return fallbackMessage;
     }
 
-    const encodedMessage = encodeURIComponent(message);
-    const phone = (lead.whatsapp || '').replace(/\D/g, "");
-    if (!phone) return '#';
-    return `https://wa.me/${phone}?text=${encodedMessage}`;
+    try {
+        const { data, error } = await supabase
+            .from('message_templates')
+            .select('template')
+            .eq('org_id', ORG_UUID)
+            .eq('event_code', EVENT_CODE)
+            .eq('channel', lead.role)
+            .single();
+        
+        if (error || !data || !data.template) {
+            console.warn(`No template found for role: ${lead.role}. Using fallback.`);
+            return fallbackMessage;
+        }
+
+        return data.template.replace(/\{nombre\}/g, name);
+
+    } catch (err) {
+        console.error("Error fetching message template:", err);
+        return fallbackMessage;
+    }
 };
+
 
 /**
  * Generates a pre-filled email (mailto) link for a given lead.
