@@ -86,3 +86,5 @@ export const TV_WELCOME_DURATION_MS = Number(ENV.VITE_TV_WELCOME_DURATION_MS || 
 export const TV_OVERLAY_THEME: 'glass' | 'gradient' = (ENV.VITE_TV_OVERLAY_THEME as any) || 'glass';
 export const TV_SHOW_QUEUE_COUNT = (ENV.VITE_TV_SHOW_QUEUE_COUNT || 'true') === 'true';
 export const TV_LOGO_URL = ENV.VITE_TV_LOGO_URL || '/logo-apt.svg';
+export const TV_RAFFLE_DURATION_MS = Number(ENV.VITE_TV_RAFFLE_DURATION_MS || 15000);
+export const TV_RAFFLE_THEME: 'celebration' | 'glass' = (ENV.VITE_TV_RAFFLE_THEME as 'celebration' | 'glass') || 'celebration';

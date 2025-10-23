@@ -32,7 +32,16 @@ export function listenTvEvents(cb: (evt: TVWelcomeMessage) => void) {
       if (chg.type === 'added') {
         const d = chg.doc.data();
         if (d.lead && d.welcomeMessage) {
-            cb({ lead: d.lead, welcomeMessage: d.welcomeMessage });
+            // FIX: The data from Firestore has a 'lead' object and a 'welcomeMessage' string.
+            // This was creating an object that didn't match the TVWelcomeMessage type.
+            // The object is now correctly constructed to match the expected type.
+            cb({
+              kind: 'welcome',
+              leadId: d.lead.id,
+              firstName: (d.lead.name || '').split(' ')[0],
+              company: d.lead.company,
+              text: d.welcomeMessage,
+            });
         }
       }
     });

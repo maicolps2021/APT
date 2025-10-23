@@ -1,14 +1,29 @@
-import type { Lead } from '../types';
+import type { Lead } from './types';
 
 /**
  * Defines the structure of the message sent to the TV display.
  */
-export interface TVWelcomeMessage {
-  lead: Lead;
-  welcomeMessage: string;
-}
+export type TVWelcomeMessage = {
+  kind: 'welcome';
+  leadId: string;
+  firstName: string;
+  company?: string;
+  text: string;
+};
 
-export const CHANNEL_NAME = 'tv-welcome-messages';
+export type TVRaffleMessage = {
+  kind: 'raffle';
+  raffleId: string;
+  raffleName: string;
+  prize?: string;
+  winnerName: string;
+  winnerCompany?: string;
+};
+
+export type TVEventMessage = TVWelcomeMessage | TVRaffleMessage;
+
+
+export const CHANNEL_NAME = 'tv-events';
 
 let _ch: BroadcastChannel | null = null;
 
@@ -35,4 +50,15 @@ export function getTvChannel(): BroadcastChannel | null {
   }
   
   return _ch;
+}
+
+/**
+ * Posts a message to the shared TV event channel.
+ * @param msg The event message to post.
+ */
+export function postTVMessage(msg: TVEventMessage) {
+    const channel = getTvChannel();
+    if (channel) {
+        channel.postMessage(msg);
+    }
 }
