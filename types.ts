@@ -1,4 +1,5 @@
 
+
 export interface Lead {
   id: string;
   created_at: string;
@@ -14,12 +15,15 @@ export interface Lead {
   whatsapp?: string;
   email?: string;
   interest?: 'Tour' | 'Traslado' | 'Ambos';
-  next_step?: 'Reunion' | 'Llamada15' | 'Condiciones' | 'FamTrip';
+  // FIX: Added 'WhatsApp' to the next_step union type to match its usage across the application.
+  next_step?: 'Reunion' | 'Llamada15' | 'Condiciones' | 'FamTrip' | 'WhatsApp';
   scoring?: 'A' | 'B' | 'C';
   owner?: string;
   meeting_at?: string;
   notes?: string;
   tags?: string[];
+  // FIX: Added the 'status' property to the Lead interface to resolve a TypeScript error in LeadList.tsx, where it was being used to update a lead's state.
+  status?: 'NEW' | 'CONTACTED' | 'PROPOSED' | 'WON' | 'LOST';
 }
 
 export interface Raffle {
