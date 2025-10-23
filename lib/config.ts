@@ -1,3 +1,27 @@
+// FIX: Add type definitions for import.meta.env to resolve TypeScript errors
+// when Vite's client types are not automatically available.
+interface ImportMetaEnv {
+  readonly VITE_FIREBASE_API_KEY?: string;
+  readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
+  readonly VITE_FIREBASE_PROJECT_ID?: string;
+  readonly VITE_FIREBASE_STORAGE_BUCKET?: string;
+  readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
+  readonly VITE_FIREBASE_APP_ID?: string;
+  readonly VITE_ORG_UUID?: string;
+  readonly VITE_EVENT_CODE?: string;
+  readonly VITE_EVENT_DATES?: string;
+  readonly VITE_WHATSAPP?: string;
+  readonly VITE_TV_BUCKET?: string;
+  readonly VITE_TV_PREFIX?: string;
+  readonly VITE_BUILDERBOT_API_KEY?: string;
+  readonly VITE_BUILDERBOT_ID?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
+
 // Firebase Environment Variables
 export const FIREBASE_CONFIG = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,

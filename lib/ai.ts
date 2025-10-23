@@ -1,26 +1,41 @@
 import { GoogleGenAI } from "@google/genai";
 
+// Según las directrices, la clave API debe provenir de process.env.API_KEY.
+// Se asume que el entorno de compilación (por ejemplo, Vite) está configurado para exponer esta variable.
+const API_KEY = process.env.API_KEY;
+
 let ai: GoogleGenAI | null = null;
 
-export function hasGemini() {
-  // Fix: Use process.env.API_KEY as per coding guidelines.
-  if (!process.env.API_KEY) {
-    // This warning is helpful for developers but won't break the app.
-    console.warn("[AI] Gemini API key not configured. AI features disabled.");
-    return false;
+if (API_KEY) {
+  try {
+    // FIX: Inicializar el cliente GoogleGenAI según las directrices.
+    ai = new GoogleGenAI({ apiKey: API_KEY });
+  } catch (e) {
+    console.error("Failed to initialize GoogleGenAI client:", e);
+    // Asegurarse de que `ai` permanezca nulo si la inicialización falla.
+    ai = null;
   }
-  return true;
+} else {
+  // Esta advertencia es útil para los desarrolladores.
+  console.warn(
+    "Gemini API key (process.env.API_KEY) not found. AI-powered features will be disabled."
+  );
 }
 
-export function getGeminiClient() {
-  if (!hasGemini()) {
-    return null;
-  }
-  // Initialize the client only once (singleton pattern)
-  if (!ai) {
-    // Fix: Use process.env.API_KEY as per coding guidelines.
-    // The key's existence is checked in hasGemini, so the non-null assertion is safe.
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
-  }
+/**
+ * Devuelve la instancia inicializada del cliente GoogleGenAI si está disponible.
+ * Esta función proporciona un único punto de acceso al cliente.
+ * @returns {GoogleGenAI | null} La instancia del cliente o nulo si la clave API no está configurada.
+ */
+export function getGeminiClient(): GoogleGenAI | null {
   return ai;
+}
+
+/**
+ * Comprueba si el cliente Gemini se ha inicializado correctamente.
+ * Esto es útil para renderizar condicionalmente componentes de la interfaz de usuario que dependen de la IA.
+ * @returns {boolean} Verdadero si el cliente está disponible, falso en caso contrario.
+ */
+export function hasGemini(): boolean {
+  return ai !== null;
 }
