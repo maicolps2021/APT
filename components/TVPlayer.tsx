@@ -4,8 +4,16 @@ import { loadPlaylist, TVItem } from '../lib/tv';
 import { WHATSAPP } from '../lib/config';
 import { QRCodeSVG } from 'qrcode.react';
 
+// Extend TVItem to include a potential welcome message type
+type PlaylistItem = TVItem | { 
+    type: 'welcome'; 
+    message: { lead: { name: string; company?: string }, welcomeMessage: string };
+    duration: number;
+    src: string; // Add src for key prop uniqueness
+};
+
 const TVPlayer: React.FC = () => {
-  const [playlist, setPlaylist] = useState<TVItem[]>([]);
+  const [playlist, setPlaylist] = useState<PlaylistItem[]>([]);
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -19,8 +27,24 @@ const TVPlayer: React.FC = () => {
   const waLink = `https://wa.me/${wa}?text=${waMsg}`;
 
   const advanceToNextItem = useCallback(() => {
-    setCurrentItemIndex(prevIndex => (prevIndex + 1) % (playlist.length || 1));
-  }, [playlist.length]);
+    setPlaylist(prevPlaylist => {
+      // Clean up any 'welcome' slides that might have finished
+      const cleanedPlaylist = prevPlaylist.filter(item => item.type !== 'welcome');
+      
+      setCurrentItemIndex(prevIndex => {
+        // Find the src of the item that was just playing in the cleaned list
+        const lastPlayedSrc = prevPlaylist[prevIndex]?.src;
+        const lastPlayedIndexInCleaned = cleanedPlaylist.findIndex(item => item.src === lastPlayedSrc);
+        
+        // If the last played item was a welcome slide, it won't be in the cleaned list.
+        // In that case, we stay at the index it was inserted at.
+        const nextIndex = (lastPlayedIndexInCleaned !== -1 ? lastPlayedIndexInCleaned + 1 : prevIndex);
+        
+        return nextIndex % (cleanedPlaylist.length || 1);
+      });
+      return cleanedPlaylist;
+    });
+  }, []);
 
   useEffect(() => {
     async function init() {
@@ -38,52 +62,87 @@ const TVPlayer: React.FC = () => {
     }
     init();
   }, []);
+  
+  // Effect to inject a welcome slide when a new message arrives
+  useEffect(() => {
+    if (message && playlist.length > 0) {
+      const welcomeSlide: PlaylistItem = {
+        type: 'welcome',
+        message: message,
+        duration: 12000, // Show for 12 seconds
+        src: `welcome-${message.lead.id}` // Unique key
+      };
+
+      setPlaylist(currentPlaylist => {
+        const newPlaylist = [...currentPlaylist];
+        // Insert the welcome slide right after the current item
+        newPlaylist.splice(currentItemIndex + 1, 0, welcomeSlide);
+        return newPlaylist;
+      });
+      
+      // Clear the message from context so it doesn't get re-added
+      clearMessage(); 
+    }
+  }, [message, clearMessage, playlist.length, currentItemIndex]);
+
 
   useEffect(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
     }
     
-    // If a new lead message is showing, pause the playlist.
-    if (message || playlist.length === 0 || isLoading) {
+    if (playlist.length === 0 || isLoading) {
       return;
     }
     
     const currentItem = playlist[currentItemIndex];
-    if (currentItem?.type === 'image') {
+    if (currentItem?.type === 'image' || currentItem?.type === 'welcome') {
       timerRef.current = setTimeout(advanceToNextItem, currentItem.duration || 8000);
     }
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [currentItemIndex, playlist, advanceToNextItem, isLoading, message]);
+  }, [currentItemIndex, playlist, advanceToNextItem, isLoading]);
   
-  // Effect to handle new lead message display
-  useEffect(() => {
-    if (message) {
-      // Clear any existing playlist timer
-      if (timerRef.current) clearTimeout(timerRef.current);
-
-      // Set a timer to clear the lead message and resume the playlist
-      const messageDisplayDuration = 12000; // Show message for 12 seconds
-      timerRef.current = setTimeout(() => {
-        clearMessage();
-      }, messageDisplayDuration);
-    }
-  }, [message, clearMessage]);
 
   const renderCurrentItem = () => {
     if (isLoading) {
-      return <div className="text-white text-3xl">Loading Playlist...</div>;
+      return <div className="text-white text-3xl flex items-center justify-center h-full">Loading Playlist...</div>;
     }
     if (error) {
-      return <div className="text-red-300 text-2xl p-8 bg-black/50 rounded-lg">{error}</div>;
+      return <div className="text-red-300 text-2xl p-8 bg-black/50 rounded-lg flex items-center justify-center h-full">{error}</div>;
     }
     if (playlist.length === 0) {
-      return null;
+      return <div className="text-white text-3xl flex items-center justify-center h-full">Playlist is empty.</div>
     }
+
     const item = playlist[currentItemIndex];
+    
+    if (item.type === 'welcome') {
+        return (
+            <div className="absolute inset-0 bg-blue-900/95 flex flex-col items-center justify-center text-center p-12 animate-welcome-in">
+                <h1 className="text-6xl font-extrabold text-white animate-text-pop-in" style={{ animationDelay: '200ms' }}>¡Bienvenido!</h1>
+                <h2 className="text-8xl font-bold text-yellow-300 mt-4 animate-text-pop-in" style={{ animationDelay: '400ms' }}>
+                    {item.message.lead.name}
+                </h2>
+                <h3 className="text-5xl text-white mt-2 animate-text-pop-in" style={{ animationDelay: '600ms' }}>
+                    de {item.message.lead.company}
+                </h3>
+                <p className="text-3xl text-blue-200 mt-12 max-w-4xl animate-text-pop-in" style={{ animationDelay: '800ms' }}>
+                    "{item.message.welcomeMessage}"
+                </p>
+                 <div className="absolute bottom-8 right-8 bg-white p-4 rounded-lg shadow-2xl flex flex-col items-center gap-2">
+                     <p className="font-bold text-slate-800">Scan to Register</p>
+                     <QRCodeSVG value={formUrl} size={150} />
+                 </div>
+                 <div className="absolute bottom-8 left-8 bg-white p-4 rounded-lg shadow-2xl flex flex-col items-center gap-2">
+                     <p className="font-bold text-slate-800">Contact Us</p>
+                     <QRCodeSVG value={waLink} size={150} />
+                 </div>
+            </div>
+        );
+    }
 
     return (
       <>
@@ -119,37 +178,9 @@ const TVPlayer: React.FC = () => {
     );
   };
   
-  const renderWelcomeMessage = () => {
-    if (!message) return null;
-
-    return (
-        <div className="absolute inset-0 bg-blue-900/90 flex flex-col items-center justify-center text-center p-12 animate-welcome-in">
-            <h1 className="text-6xl font-extrabold text-white animate-text-pop-in" style={{ animationDelay: '200ms' }}>¡Bienvenido!</h1>
-            <h2 className="text-8xl font-bold text-yellow-300 mt-4 animate-text-pop-in" style={{ animationDelay: '400ms' }}>
-                {message.lead.name}
-            </h2>
-            <h3 className="text-5xl text-white mt-2 animate-text-pop-in" style={{ animationDelay: '600ms' }}>
-                de {message.lead.company}
-            </h3>
-            <p className="text-3xl text-blue-200 mt-12 max-w-4xl animate-text-pop-in" style={{ animationDelay: '800ms' }}>
-                "{message.welcomeMessage}"
-            </p>
-             <div className="absolute bottom-8 right-8 bg-white p-4 rounded-lg shadow-2xl flex flex-col items-center gap-2">
-                 <p className="font-bold text-slate-800">Scan to Register</p>
-                 <QRCodeSVG value={formUrl} size={150} />
-             </div>
-             <div className="absolute bottom-8 left-8 bg-white p-4 rounded-lg shadow-2xl flex flex-col items-center gap-2">
-                 <p className="font-bold text-slate-800">Contact Us</p>
-                 <QRCodeSVG value={waLink} size={150} />
-             </div>
-        </div>
-    );
-  };
-
   return (
     <div className="w-screen h-screen bg-black overflow-hidden relative">
       {renderCurrentItem()}
-      {renderWelcomeMessage()}
        <style>{`
             @keyframes welcome-in {
                 from { opacity: 0; transform: scale(0.9); }
