@@ -39,8 +39,10 @@ const Materials: React.FC = () => {
         const querySnapshot = await getDocs(q);
         const leadsData = querySnapshot.docs.map(doc => {
           const data = doc.data();
-          // Convert Firestore Timestamp to ISO string for consistency
-          const createdAt = data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : new Date().toISOString();
+          // Duck-typing to check for Firestore Timestamp object to avoid TS build error
+          const createdAt = data.created_at && typeof data.created_at.toDate === 'function' 
+            ? data.created_at.toDate().toISOString() 
+            : new Date().toISOString();
           return { id: doc.id, ...data, created_at: createdAt } as Lead
         });
       

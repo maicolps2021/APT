@@ -30,7 +30,10 @@ const Raffles: React.FC = () => {
 
             const rafflesData = querySnapshot.docs.map(doc => {
                  const data = doc.data();
-                 const drawnAt = data.drawn_at instanceof Timestamp ? data.drawn_at.toDate().toISOString() : new Date().toISOString();
+                 // Duck-typing to check for Firestore Timestamp object to avoid TS build error
+                 const drawnAt = data.drawn_at && typeof data.drawn_at.toDate === 'function'
+                    ? data.drawn_at.toDate().toISOString()
+                    : new Date().toISOString();
                  return { id: doc.id, ...data, drawn_at: drawnAt } as Raffle;
             });
 
