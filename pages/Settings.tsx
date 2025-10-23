@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db, storage } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase
-import { collection, getDocs, doc, setDoc, query, where } from 'firestore';
-import { ref, listAll, getDownloadURL, uploadString } from 'storage';
+import { collection, getDocs, doc, setDoc, query, where } from 'firebase/firestore';
+import { ref, listAll, getDownloadURL, uploadString } from 'firebase/storage';
 import { 
     TV_PREFIX,
     ORG_UUID,
