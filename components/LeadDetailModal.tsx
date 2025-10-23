@@ -48,9 +48,18 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
     setIsSaving(true);
     setError(null);
     try {
+      // Only include fields that can be modified in this form to avoid sending the primary key (id)
+      const updateData = {
+          next_step: formData.next_step,
+          scoring: formData.scoring,
+          meeting_at: formData.meeting_at,
+          owner: formData.owner,
+          notes: formData.notes,
+      };
+
       const { data, error } = await supabase
         .from('leads')
-        .update(formData)
+        .update(updateData)
         .eq('id', lead.id)
         .select()
         .single();
