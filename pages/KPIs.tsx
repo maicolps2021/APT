@@ -7,9 +7,11 @@ import type { KPIsData, Lead } from '../types';
 import { generateKpiAnalysis } from '../lib/geminiService';
 import { hasGemini } from '../lib/ai';
 import { RefreshCw, LoaderCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 
 const KPIs: React.FC = () => {
+  const { status: authStatus, error: authError } = useAuth();
   const [kpis, setKpis] = useState<KPIsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +22,10 @@ const KPIs: React.FC = () => {
   const [aiError, setAiError] = useState<string | null>(null);
 
   const fetchKPIs = useCallback(async () => {
+    if (authStatus !== 'authenticated') {
+        setLoading(false);
+        return;
+    }
     setLoading(true);
     setError(null);
 
@@ -59,7 +65,7 @@ const KPIs: React.FC = () => {
         });
 
       } else {
-        setKpis(null);
+        setKpis({ total_leads: 0, leads_by_channel: {}, leads_by_day: [] });
       }
     } catch (err: any) {
       console.error("Error fetching KPIs:", err);
@@ -68,7 +74,7 @@ const KPIs: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authStatus]);
 
   useEffect(() => {
     fetchKPIs();
@@ -142,34 +148,24 @@ const KPIs: React.FC = () => {
     );
   };
 
-  return (
-    <div className="mx-auto max-w-6xl">
-      <div className="flex flex-col md:flex-row justify-between items-center mb-8">
-        <div className="text-center md:text-left">
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">KPI Dashboard</h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-2">Key performance indicators for {EVENT_CODE}.</p>
-        </div>
-        <button 
-            onClick={fetchKPIs} 
-            disabled={loading}
-            className="mt-4 md:mt-0 flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-2 font-semibold text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 disabled:bg-gray-200 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-all"
-        >
-          <RefreshCw className={`mr-2 h-5 w-5 ${loading ? 'animate-spin': ''}`} />
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
-      </div>
+  const renderContent = () => {
+    if (authStatus === 'initializing') {
+        return <div className="text-center p-8 text-gray-500 dark:text-gray-400">Authenticating...</div>
+    }
+    if (authStatus === 'error') {
+        return <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">Authentication failed: {authError}. Please enable Anonymous sign-in in your Firebase project.</div>
+    }
+    if (loading) {
+        return <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading KPIs...</div>
+    }
+    if (error) {
+        return <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>
+    }
+    if (!kpis) {
+        return <div className="text-center p-8 text-gray-500 dark:text-gray-400">No KPI data found for this event.</div>
+    }
 
-      {loading && !kpis && (
-          <div className="text-center p-8 text-gray-500 dark:text-gray-400">Loading KPIs...</div>
-      )}
-
-      {error && <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>}
-
-      {!loading && !error && !kpis && (
-        <div className="text-center p-8 text-gray-500 dark:text-gray-400">No KPI data found for this event.</div>
-      )}
-
-      {kpis && (
+    return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
           <Card className="md:col-span-1">
             <h3 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-3">Total Leads</h3>
@@ -246,7 +242,28 @@ const KPIs: React.FC = () => {
             </Card>
           )}
         </div>
-      )}
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-8">
+        <div className="text-center md:text-left">
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">KPI Dashboard</h1>
+            <p className="text-gray-500 dark:text-gray-400 mt-2">Key performance indicators for {EVENT_CODE}.</p>
+        </div>
+        <button 
+            onClick={fetchKPIs} 
+            disabled={loading || authStatus !== 'authenticated'}
+            className="mt-4 md:mt-0 flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-2 font-semibold text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 disabled:bg-gray-200 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-all"
+        >
+          <RefreshCw className={`mr-2 h-5 w-5 ${loading ? 'animate-spin': ''}`} />
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
+      {renderContent()}
+
       <style>{`
         @keyframes fade-in {
           0% { opacity: 0; transform: translateY(10px); }

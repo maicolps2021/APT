@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import Home from './pages/Home';
 import Capture from './pages/Capture';
@@ -11,6 +9,7 @@ import Materials from './pages/Materials';
 import LeadList from './pages/LeadList';
 import Settings from './pages/Settings';
 import DashboardLayout from './components/DashboardLayout';
+import { AuthProvider } from './contexts/AuthContext';
 
 const App: React.FC = () => {
   const [route, setRoute] = useState(window.location.hash);
@@ -53,13 +52,15 @@ const App: React.FC = () => {
   
   // Render TV and Capture pages in full-screen "kiosk" mode without the dashboard layout
   if (route === '#/tv' || route === '#/capture') {
-    return renderPage();
+    return <AuthProvider>{renderPage()}</AuthProvider>;
   }
 
   return (
-    <DashboardLayout>
-      {renderPage()}
-    </DashboardLayout>
+    <AuthProvider>
+      <DashboardLayout>
+        {renderPage()}
+      </DashboardLayout>
+    </AuthProvider>
   );
 };
 

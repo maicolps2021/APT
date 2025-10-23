@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import { FIREBASE_CONFIG } from './config';
 
 // Validate Firebase configuration
@@ -18,11 +18,6 @@ const db = getFirestore(app);
 const storage = getStorage(app);
 const auth = getAuth(app);
 
-// Authenticate the user anonymously to satisfy security rules
-// This allows the app to work for any user without a formal login process.
-signInAnonymously(auth).catch((error) => {
-  console.error("Anonymous sign-in failed:", error);
-});
-
+// The signInAnonymously call is now handled by AuthProvider.
 
 export { db, storage, auth };

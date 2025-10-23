@@ -4,6 +4,7 @@ import { collection, addDoc, getDocs, query, where, serverTimestamp, Timestamp }
 import { EVENT_CODE, ORG_UUID } from "../lib/config";
 import type { Lead } from '../types';
 import { List, PlusCircle, RotateCcw } from 'lucide-react';
+import { useAuth } from "../contexts/AuthContext";
 
 const mapDay = () => {
   const d = new Date().getDate();
@@ -17,6 +18,7 @@ interface LeadFormProps {
 }
 
 export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
+  const { status: authStatus, error: authError } = useAuth();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<Lead | null>(null);
@@ -73,6 +75,12 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
     e.preventDefault();
     setLoading(true); setErr(null); setDuplicate(null);
 
+    if (authStatus !== 'authenticated') {
+        setErr(`Authentication Error: ${authError || 'Not authenticated.'}`);
+        setLoading(false);
+        return;
+    }
+
     const f = new FormData(e.currentTarget);
     const whatsapp = (f.get("whatsapp") as string || "").replace(/\s+/g, "");
     const email = (f.get("email") as string || "").trim().toLowerCase();
@@ -99,22 +107,17 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
       const foundDocs: Lead[] = [];
       querySnapshots.forEach(snapshot => {
           snapshot.forEach(doc => {
-              // Explicitly type the data coming from Firestore
-              const data = doc.data() as Omit<Lead, 'id' | 'created_at'> & { created_at?: Timestamp };
-              
-              // Convert the Firestore Timestamp to an ISO string
+              const data = doc.data() as Partial<Omit<Lead, 'id' | 'created_at'>> & { created_at?: Timestamp };
               const createdAtString = data.created_at && typeof data.created_at.toDate === 'function'
                 ? data.created_at.toDate().toISOString()
                 : new Date().toISOString();
-
-              // Construct the final object conforming to the Lead interface
+              
               const leadData: Lead = {
-                // Spread the rest of the data, which is now correctly typed
-                ...(data as Omit<Lead, 'id' | 'created_at'>),
+                ...({} as Omit<Lead, 'id'|'created_at'>), // Base object to satisfy TypeScript
+                ...data,
                 id: doc.id,
                 created_at: createdAtString,
               };
-
               foundDocs.push(leadData);
           });
       });
@@ -202,11 +205,12 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
             >
                 <RotateCcw size={18} />
             </button>
-            <button disabled={loading || !!duplicate} className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-all">
-                {loading ? "Verificando…" : "Guardar lead"}
+            <button disabled={loading || !!duplicate || authStatus !== 'authenticated'} className="w-full rounded-lg bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-all">
+                {authStatus === 'initializing' ? "Autenticando..." : (loading ? "Verificando…" : "Guardar lead")}
             </button>
         </div>
-
+        
+        {authStatus === 'error' && <p className="text-red-500 dark:text-red-400 text-sm text-center">Authentication Error: {authError}</p>}
         {err && <p className="text-red-500 dark:text-red-400 text-sm text-center">{err}</p>}
       </form>
       {duplicate && (

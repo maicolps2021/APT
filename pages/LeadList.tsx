@@ -8,10 +8,12 @@ import { getPersonalizedWhatsAppMessage, generateEmailLink } from '../lib/templa
 import { RefreshCw, Mail, Send, LoaderCircle, CheckCircle, XCircle, Trash2, Edit } from 'lucide-react';
 import { hasBuilderBot, sendBuilderBotMessage } from '../services/builderbotService';
 import LeadDetailModal from '../components/LeadDetailModal';
+import { useAuth } from '../contexts/AuthContext';
 
 type ContactStatus = 'idle' | 'sending' | 'sent' | 'error';
 
 const LeadList: React.FC = () => {
+  const { status: authStatus, error: authError } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +23,10 @@ const LeadList: React.FC = () => {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   const fetchLeads = useCallback(async () => {
+    if (authStatus !== 'authenticated') {
+        setLoading(false);
+        return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -46,7 +52,7 @@ const LeadList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authStatus]);
 
   useEffect(() => {
     fetchLeads();
@@ -142,6 +148,112 @@ const LeadList: React.FC = () => {
     </div>
   );
 
+  const renderContent = () => {
+    if (authStatus === 'initializing') {
+        return <p className="text-center text-gray-500 dark:text-gray-400 p-8">Authenticating...</p>;
+    }
+    if (authStatus === 'error') {
+        return <p className="text-center text-red-500 p-8">Authentication failed: {authError}. Please check your Firebase project configuration and enable Anonymous sign-in.</p>;
+    }
+    if (loading) {
+        return <p className="text-center text-gray-500 dark:text-gray-400 p-8">Loading leads...</p>;
+    }
+    if (error) {
+        return <p className="text-center text-red-500 p-8">{error}</p>;
+    }
+
+    return (
+        <>
+            {/* Desktop Table View */}
+            <div className="overflow-x-auto hidden md:block">
+                <table className="min-w-full text-gray-800 dark:text-gray-200">
+                <thead className="border-b border-gray-200 dark:border-gray-700">
+                    <tr>
+                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Company</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contact</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Details</th>
+                    <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Registered</th>
+                    <th className="py-3 px-4 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {filteredLeads.length > 0 ? filteredLeads.map(lead => (
+                    <tr key={lead.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                        <td className="py-3 px-4 whitespace-nowrap">
+                            <div className="font-semibold text-gray-900 dark:text-white">{lead.name}</div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400">{lead.role}</div>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">{lead.company}</td>
+                        <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
+                            {lead.whatsapp && <div>WA: {lead.whatsapp}</div>}
+                            {lead.email && <div>{lead.email}</div>}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
+                            {lead.next_step && <div className="font-semibold text-blue-600 dark:text-blue-400">Next: {lead.next_step}</div>}
+                            {lead.meeting_at && <div className="text-green-600 dark:text-green-400 font-medium">Meeting: {new Date(lead.meeting_at).toLocaleString()}</div>}
+                            {lead.notes && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate max-w-xs" title={lead.notes}>Note: {lead.notes}</div>}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {new Date(lead.created_at).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                            {leadActions(lead)}
+                        </td>
+                    </tr>
+                    )) : (
+                    <tr>
+                        <td colSpan={6} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
+                        {searchTerm ? 'No leads match your search.' : 'No leads have been captured yet.'}
+                        </td>
+                    </tr>
+                    )}
+                </tbody>
+                </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden space-y-4">
+                {filteredLeads.length > 0 ? filteredLeads.map(lead => (
+                    <div key={lead.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="font-bold text-lg text-gray-900 dark:text-white">{lead.name}</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-300">{lead.company}</p>
+                                <p className="text-xs text-blue-500 dark:text-blue-400 font-semibold mt-1">{lead.role}</p>
+                            </div>
+                            {leadActions(lead)}
+                        </div>
+                        <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 text-sm space-y-2">
+                            {(lead.whatsapp || lead.email) && (
+                                <div>
+                                    <h4 className="font-semibold text-gray-700 dark:text-gray-200">Contact</h4>
+                                    <p className="text-gray-500 dark:text-gray-400">{lead.whatsapp}</p>
+                                    <p className="text-gray-500 dark:text-gray-400">{lead.email}</p>
+                                </div>
+                            )}
+                            {(lead.next_step || lead.meeting_at) && (
+                                <div>
+                                    <h4 className="font-semibold text-gray-700 dark:text-gray-200">Status</h4>
+                                    {lead.next_step && <p className="font-semibold text-blue-600 dark:text-blue-400">Next: {lead.next_step}</p>}
+                                    {lead.meeting_at && <p className="text-green-600 dark:text-green-400 font-medium">Meeting: {new Date(lead.meeting_at).toLocaleString()}</p>}
+                                </div>
+                            )}
+                            <p className="text-xs text-gray-400 dark:text-gray-500 pt-2">
+                                Registered: {new Date(lead.created_at).toLocaleString()}
+                            </p>
+                        </div>
+                    </div>
+                )) : (
+                    <p className="py-8 text-center text-gray-500 dark:text-gray-400">
+                        {searchTerm ? 'No leads match your search.' : 'No leads have been captured yet.'}
+                    </p>
+                )}
+            </div>
+        </>
+    );
+  }
+
   return (
     <>
       <div className="mx-auto max-w-7xl">
@@ -160,107 +272,15 @@ const LeadList: React.FC = () => {
             />
             <button
               onClick={fetchLeads}
-              disabled={loading}
+              disabled={loading || authStatus !== 'authenticated'}
               className="flex items-center justify-center rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-4 py-2 font-semibold text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:bg-gray-200 dark:disabled:bg-gray-900 disabled:cursor-not-allowed transition-all h-[49px]"
             >
               <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
-
         <Card>
-          {loading && <p className="text-center text-gray-500 dark:text-gray-400 p-8">Loading leads...</p>}
-          {error && <p className="text-center text-red-500 p-8">{error}</p>}
-          {!loading && !error && (
-              <>
-                  {/* Desktop Table View */}
-                  <div className="overflow-x-auto hidden md:block">
-                      <table className="min-w-full text-gray-800 dark:text-gray-200">
-                      <thead className="border-b border-gray-200 dark:border-gray-700">
-                          <tr>
-                          <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
-                          <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Company</th>
-                          <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contact</th>
-                          <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Details</th>
-                          <th className="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Registered</th>
-                          <th className="py-3 px-4 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                          {filteredLeads.length > 0 ? filteredLeads.map(lead => (
-                          <tr key={lead.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                              <td className="py-3 px-4 whitespace-nowrap">
-                                  <div className="font-semibold text-gray-900 dark:text-white">{lead.name}</div>
-                                  <div className="text-sm text-gray-500 dark:text-gray-400">{lead.role}</div>
-                              </td>
-                              <td className="py-3 px-4 whitespace-nowrap">{lead.company}</td>
-                              <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
-                                  {lead.whatsapp && <div>WA: {lead.whatsapp}</div>}
-                                  {lead.email && <div>{lead.email}</div>}
-                              </td>
-                              <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
-                                  {lead.next_step && <div className="font-semibold text-blue-600 dark:text-blue-400">Next: {lead.next_step}</div>}
-                                  {lead.meeting_at && <div className="text-green-600 dark:text-green-400 font-medium">Meeting: {new Date(lead.meeting_at).toLocaleString()}</div>}
-                                  {lead.notes && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate max-w-xs" title={lead.notes}>Note: {lead.notes}</div>}
-                              </td>
-                              <td className="py-3 px-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                  {new Date(lead.created_at).toLocaleString()}
-                              </td>
-                              <td className="py-3 px-4 whitespace-nowrap">
-                                  {leadActions(lead)}
-                              </td>
-                          </tr>
-                          )) : (
-                          <tr>
-                              <td colSpan={6} className="py-8 px-4 text-center text-gray-500 dark:text-gray-400">
-                              {searchTerm ? 'No leads match your search.' : 'No leads have been captured yet.'}
-                              </td>
-                          </tr>
-                          )}
-                      </tbody>
-                      </table>
-                  </div>
-
-                  {/* Mobile Card View */}
-                  <div className="md:hidden space-y-4">
-                      {filteredLeads.length > 0 ? filteredLeads.map(lead => (
-                          <div key={lead.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                              <div className="flex justify-between items-start">
-                                  <div>
-                                      <p className="font-bold text-lg text-gray-900 dark:text-white">{lead.name}</p>
-                                      <p className="text-sm text-gray-600 dark:text-gray-300">{lead.company}</p>
-                                      <p className="text-xs text-blue-500 dark:text-blue-400 font-semibold mt-1">{lead.role}</p>
-                                  </div>
-                                  {leadActions(lead)}
-                              </div>
-                              <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 text-sm space-y-2">
-                                  {(lead.whatsapp || lead.email) && (
-                                      <div>
-                                          <h4 className="font-semibold text-gray-700 dark:text-gray-200">Contact</h4>
-                                          <p className="text-gray-500 dark:text-gray-400">{lead.whatsapp}</p>
-                                          <p className="text-gray-500 dark:text-gray-400">{lead.email}</p>
-                                      </div>
-                                  )}
-                                  {(lead.next_step || lead.meeting_at) && (
-                                      <div>
-                                          <h4 className="font-semibold text-gray-700 dark:text-gray-200">Status</h4>
-                                          {lead.next_step && <p className="font-semibold text-blue-600 dark:text-blue-400">Next: {lead.next_step}</p>}
-                                          {lead.meeting_at && <p className="text-green-600 dark:text-green-400 font-medium">Meeting: {new Date(lead.meeting_at).toLocaleString()}</p>}
-                                      </div>
-                                  )}
-                                  <p className="text-xs text-gray-400 dark:text-gray-500 pt-2">
-                                      Registered: {new Date(lead.created_at).toLocaleString()}
-                                  </p>
-                              </div>
-                          </div>
-                      )) : (
-                          <p className="py-8 text-center text-gray-500 dark:text-gray-400">
-                              {searchTerm ? 'No leads match your search.' : 'No leads have been captured yet.'}
-                          </p>
-                      )}
-                  </div>
-              </>
-          )}
+            {renderContent()}
         </Card>
       </div>
 
