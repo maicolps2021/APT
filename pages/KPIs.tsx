@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../lib/supabaseClient';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
@@ -138,7 +139,8 @@ const KPIs: React.FC = () => {
   };
   
   const leadsByDayChartData = kpis.leads_by_day.map(d => ({ label: `Day ${d.day}`, value: d.count }));
-  const leadsByChannelChartData = Object.entries(kpis.leads_by_channel).map(([channel, count]) => ({ label: channel, value: count })).sort((a,b) => b.value - a.value);
+  // FIX: Explicitly cast sorting values to Number to fix TypeScript arithmetic error.
+  const leadsByChannelChartData = Object.entries(kpis.leads_by_channel).map(([channel, count]) => ({ label: channel, value: count })).sort((a,b) => Number(b.value) - Number(a.value));
 
   if (loading) return <div className="text-center p-8">Loading KPI data...</div>;
   if (error) return <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>;
