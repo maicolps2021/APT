@@ -10,13 +10,28 @@ export const generateWelcomeMessage = async (lead: Lead): Promise<string> => {
     return fallbackMessage;
   }
 
-  const prompt = `Generate a short, fun, and energetic welcome message for an event attendee.
-  
-  Attendee Details:
-  - Name: ${lead.name}
-  - Company: ${lead.company}
-  
-  The message should be one or two sentences. Be creative and welcoming. For example, you can mention their company in a positive light or add a fun, generic fact.`;
+  const prompt = `You are a copywriter for an event screen.
+Your task is to write a short, fun, energetic WELCOME message for an attendee.
+
+**Language requirement:** Always write the final message **in English only**. Do not translate into any other language, even if the input is not in English.
+
+**Attendee Details**
+- Name: ${lead.name}
+- Company: ${lead.company || 'Independent'}
+
+**Style & Length**
+- 1–2 sentences max.
+- Friendly, upbeat, professional.
+- You may use at most one emoji, or none. Avoid hashtags and ALL CAPS.
+
+**Content Rules**
+- Greet the person by first name.
+- If company is present, reference it positively once.
+- No sensitive claims, no promises, no slang that could be offensive.
+- Avoid repeating the event name unless it is natural.
+
+**Output**
+- Return only the final message text. No quotes, no prefixes, no markdown, no JSON.`;
 
   try {
     const response = await ai.models.generateContent({
