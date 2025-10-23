@@ -1,208 +1,243 @@
-
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from '../lib/supabaseClient';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
-import { EVENT_CODE, ORG_UUID, EVENT_DATES } from '../lib/config';
-import type { Lead, KPIsData, DailyLeads, ChannelDistribution } from '../types';
+import { collection, getDocs, query, where, orderBy, Timestamp, getCountFromServer } from 'firebase/firestore';
+import { EVENT_CODE, ORG_UUID } from '../lib/config';
 import Card from '../components/Card';
-import KpiFilters, { KpiFilterState } from '../components/KpiFilters';
-import { hasGemini } from '../lib/ai';
-import { generateKpiAnalysis } from '../lib/geminiService';
-import { LoaderCircle, Sparkles } from 'lucide-react';
+import KpiFilters from '../components/KpiFilters';
+import { toCSV, downloadCSV } from '../lib/csv';
+import { LoaderCircle } from 'lucide-react';
+
+// Helpers
+function toDateValue(d: Date) { return d.toISOString().slice(0, 10); } // YYYY-MM-DD
+function asDate(x: any): Date {
+  if (x?.toDate) return x.toDate();
+  const s = typeof x === 'string' ? x : '';
+  const parsed = s ? new Date(s) : null;
+  return parsed && !isNaN(+parsed) ? parsed : new Date();
+}
+function dayKey(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
+type AnyLead = Record<string, any>;
+function getChannel(l: AnyLead) { return (l.role || 'Otro').toString().trim(); }
+function getCreatedAt(l: AnyLead): Date { return asDate(l.created_at); }
 
 const KPIs: React.FC = () => {
-  const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [from, setFrom] = useState<string>(() => toDateValue(new Date(Date.now() - 6 * 86400000)));
+  const [to, setTo] = useState<string>(() => toDateValue(new Date()));
+  const [channel, setChannel] = useState<string>(() => localStorage.getItem('kpi_channel') || '');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  const eventDays = useMemo<number[]>(() => {
-    const dates = (EVENT_DATES as string).split(',').map(d => {
-        const date = new Date(String(d).trim());
-        return date.getUTCDate();
-    });
-    return [...new Set(dates)].sort((a,b)=> a - b);
-  }, []);
 
-  const [filters, setFilters] = useState<KpiFilterState>({
-    day: 'all',
-    source: 'all',
-  });
+  const [leads, setLeads] = useState<AnyLead[]>([]);
+  const [channels, setChannels] = useState<string[]>([]);
+  const [currentTotal, setCurrentTotal] = useState<number>(0);
+  const [prevTotal, setPrevTotal] = useState<number>(0);
 
-  const [aiQuery, setAiQuery] = useState('');
-  const [aiResponse, setAiResponse] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  useEffect(() => { localStorage.setItem('kpi_channel', channel); }, [channel]);
 
-  const fetchLeads = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const leadsRef = collection(db, 'leads');
-      const q = query(leadsRef,
+      // Current period
+      const fromDate = new Date(from + 'T00:00:00Z');
+      const toDate = new Date(to + 'T23:59:59Z');
+      
+      const queryConstraints = [
         where('event_code', '==', EVENT_CODE),
         where('org_id', '==', ORG_UUID),
-        orderBy('created_at', 'asc')
-      );
-      const querySnapshot = await getDocs(q);
-      const leadsData = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        const createdAt = data.created_at && typeof data.created_at.toDate === 'function'
-          ? data.created_at.toDate().toISOString()
-          : new Date().toISOString();
-        return { id: doc.id, ...data, created_at: createdAt } as Lead;
-      });
-      setAllLeads(leadsData);
-    } catch (err: any) {
-      console.error("Error fetching leads for KPIs:", err);
-      setError("Could not load lead data for KPIs. Please check the console.");
+        where('created_at', '>=', Timestamp.fromDate(fromDate)),
+        where('created_at', '<=', Timestamp.fromDate(toDate)),
+      ];
+      if (channel) {
+        queryConstraints.push(where('role', '==', channel));
+      }
+
+      const leadsRef = collection(db, 'leads');
+      const qCount = query(leadsRef, ...queryConstraints);
+      const snapCount = await getCountFromServer(qCount);
+      setCurrentTotal(snapCount.data().count);
+      
+      const qData = query(qCount, orderBy('created_at', 'asc'));
+      const snapData = await getDocs(qData);
+      const rows = snapData.docs.map(d => ({ id: d.id, ...d.data() }));
+      setLeads(rows);
+
+      // Previous period for comparison
+      const delta = toDate.getTime() - fromDate.getTime();
+      const prevFrom = new Date(fromDate.getTime() - delta);
+      const prevTo = new Date(fromDate.getTime() - 1);
+
+      const prevQueryConstraints = [
+        where('event_code', '==', EVENT_CODE),
+        where('org_id', '==', ORG_UUID),
+        where('created_at', '>=', Timestamp.fromDate(prevFrom)),
+        where('created_at', '<=', Timestamp.fromDate(prevTo)),
+      ];
+      if (channel) {
+        prevQueryConstraints.push(where('role', '==', channel));
+      }
+      
+      const qPrevCount = query(leadsRef, ...prevQueryConstraints);
+      const prevSnap = await getCountFromServer(qPrevCount);
+      setPrevTotal(prevSnap.data().count);
+      
+      setLastUpdated(new Date());
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message || 'Failed to load KPIs');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [from, to, channel]);
 
   useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
-
-  const filteredLeads = useMemo(() => {
-    return allLeads.filter(lead => {
-      const dayMatch = filters.day === 'all' || lead.day === filters.day;
-      const sourceMatch = filters.source === 'all' || lead.source === filters.source;
-      return dayMatch && sourceMatch;
-    });
-  }, [allLeads, filters]);
-
-  const kpis = useMemo<KPIsData>(() => {
-    const leads_by_channel: ChannelDistribution = {};
-    const leads_by_day_map: { [key: number]: number } = {};
-
-    for (const lead of filteredLeads) {
-      // By channel (using 'role' as channel)
-      const channel = lead.role || 'Otro';
-      leads_by_channel[channel] = (leads_by_channel[channel] || 0) + 1;
-
-      // By day
-      const day = lead.day;
-      leads_by_day_map[day] = (leads_by_day_map[day] || 0) + 1;
-    }
-
-    const leads_by_day: DailyLeads[] = Object.entries(leads_by_day_map)
-      .map(([day, count]) => ({ day: Number(day), count }))
-      .sort((a, b) => a.day - b.day);
-
-    return {
-      total_leads: filteredLeads.length,
-      leads_by_channel,
-      leads_by_day,
-    };
-  }, [filteredLeads]);
-
-  const handleFilterChange = <K extends keyof KpiFilterState>(key: K, value: KpiFilterState[K]) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-  };
-
-  const handleAiAnalysis = async () => {
-    if (!aiQuery.trim() || !hasGemini()) return;
-    setIsAnalyzing(true);
-    setAiResponse('');
-    try {
-      const response = await generateKpiAnalysis(aiQuery, kpis);
-      setAiResponse(response);
-    } catch (err) {
-      setAiResponse("An error occurred during analysis.");
-      console.error(err);
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  const BarChart: React.FC<{ data: { label: string, value: number }[] }> = ({ data }) => {
-    const maxValue = Math.max(...data.map(d => d.value), 0);
-    return (
-      <div className="space-y-2">
-        {data.map(({ label, value }) => (
-          <div key={label} className="grid grid-cols-4 items-center gap-2 text-sm">
-            <div className="col-span-1 text-gray-600 dark:text-gray-400 truncate">{label}</div>
-            <div className="col-span-3 flex items-center gap-2">
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4">
-                <div
-                  className="bg-blue-600 h-4 rounded-full"
-                  style={{ width: maxValue > 0 ? `${(value / maxValue) * 100}%` : '0%' }}
-                />
-              </div>
-              <div className="font-semibold w-8 text-right">{value}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
+    fetchAll();
+  }, [fetchAll]);
   
-  const leadsByDayChartData = kpis.leads_by_day.map(d => ({ label: `Day ${d.day}`, value: d.count }));
-  // FIX: Explicitly cast sorting values to Number to fix TypeScript arithmetic error.
-  const leadsByChannelChartData = Object.entries(kpis.leads_by_channel).map(([channel, count]) => ({ label: channel, value: count })).sort((a,b) => Number(b.value) - Number(a.value));
+  useEffect(() => {
+      const uniqueChannels = Array.from(new Set(leads.map(getChannel))).sort();
+      setChannels(uniqueChannels);
+  }, [leads]);
 
-  if (loading) return <div className="text-center p-8">Loading KPI data...</div>;
-  if (error) return <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>;
+  const aggregates = useMemo(() => {
+    const byDay = new Map<string, number>();
+    const byHour = new Map<number, number>();
+    const byChannel = new Map<string, number>();
 
+    leads.forEach(l => {
+      const d = getCreatedAt(l);
+      const dk = dayKey(d);
+      byDay.set(dk, (byDay.get(dk) || 0) + 1);
+      byHour.set(d.getHours(), (byHour.get(d.getHours()) || 0) + 1);
+      byChannel.set(getChannel(l), (byChannel.get(getChannel(l)) || 0) + 1);
+    });
+
+    const dayArr = Array.from(byDay.entries()).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
+    const hourArr = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: byHour.get(h) || 0 }));
+    const channelArr = Array.from(byChannel.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+
+    const todayKey = dayKey(new Date());
+    const leadsToday = leads.filter(l => dayKey(getCreatedAt(l)) === todayKey).length;
+
+    return { dayArr, hourArr, channelArr, leadsToday };
+  }, [leads]);
+
+  function onExport() {
+    const rows = leads.map(l => ({
+      id: l.id,
+      created_at: getCreatedAt(l).toISOString(),
+      name: l.name || '',
+      email: l.email || '',
+      whatsapp: l.whatsapp || '',
+      company: l.company || '',
+      channel: getChannel(l),
+      status: l.status || '',
+      next_step: l.next_step || ''
+    }));
+    downloadCSV(`leads_${EVENT_CODE}_${from}_${to}.csv`, toCSV(rows));
+  }
+
+  const diff = currentTotal - prevTotal;
+  const trend = diff === 0 ? '—' : diff > 0 ? `▲ +${diff}` : `▼ ${diff}`;
+  const trendColor = diff === 0 ? 'text-gray-600 dark:text-gray-400' : diff > 0 ? 'text-green-600' : 'text-red-600';
+  
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="text-center">
         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Event KPIs</h1>
         <p className="text-gray-500 dark:text-gray-400 mt-2">Analyze lead capture performance in real-time.</p>
       </div>
 
-      <Card>
-        <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">Filters</h2>
-        <KpiFilters filters={filters} onFilterChange={handleFilterChange} eventDays={eventDays} />
-      </Card>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="md:col-span-1 text-center">
-            <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300">Total Leads Captured</h3>
-            <p className="text-5xl font-extrabold text-gray-900 dark:text-white mt-2">{kpis.total_leads}</p>
+      <KpiFilters
+        from={from} to={to} channel={channel} channels={channels}
+        onChange={({ from: f, to: t, channel: c }) => { setFrom(f); setTo(t); setChannel(c); }}
+        onRefresh={fetchAll}
+        lastUpdated={lastUpdated}
+      />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <div className="text-xs opacity-70 mb-1">Total (range)</div>
+          <div className="text-2xl font-semibold">{currentTotal}</div>
+          <div className={`text-xs mt-1 font-medium ${trendColor}`}>vs prev: {trend}</div>
         </Card>
-        <Card className="md:col-span-2">
-            <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300 mb-4">Leads per Day</h3>
-            {kpis.leads_by_day.length > 0 ? <BarChart data={leadsByDayChartData} /> : <p className="text-gray-500">No data for this period.</p>}
+        <Card>
+          <div className="text-xs opacity-70 mb-1">Today</div>
+          <div className="text-2xl font-semibold">{aggregates.leadsToday}</div>
+        </Card>
+        <Card>
+          <div className="text-xs opacity-70 mb-1">Channels used</div>
+          <div className="text-2xl font-semibold">{aggregates.channelArr.length}</div>
+        </Card>
+         <Card className="flex items-center justify-center">
+          <button onClick={onExport} className="px-4 py-2 w-full rounded-lg bg-gray-800 text-white dark:bg-gray-100 dark:text-black hover:opacity-90 font-semibold">Export CSV</button>
         </Card>
       </div>
 
-      <Card>
-        <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300 mb-4">Leads by Channel (Role)</h3>
-        {Object.keys(kpis.leads_by_channel).length > 0 ? <BarChart data={leadsByChannelChartData} /> : <p className="text-gray-500">No data for this period.</p>}
-      </Card>
-
-      {hasGemini() && (
-        <Card>
-          <h2 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">AI-Powered Analysis</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Ask a question about the current KPI data. For example: "Which was our best performing day and why?"</p>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              type="text"
-              value={aiQuery}
-              onChange={(e) => setAiQuery(e.target.value)}
-              placeholder="Ask anything..."
-              className="input flex-grow"
-              disabled={isAnalyzing}
-            />
-            <button
-              onClick={handleAiAnalysis}
-              disabled={isAnalyzing || !aiQuery.trim()}
-              className="w-full sm:w-auto rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white hover:bg-blue-700 disabled:bg-gray-500 flex items-center justify-center gap-2"
-            >
-              {isAnalyzing ? <LoaderCircle className="animate-spin" /> : <Sparkles size={16} />}
-              {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-            </button>
-          </div>
-          {aiResponse && (
-            <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                 <pre className="bg-transparent p-0 whitespace-pre-wrap font-sans">{aiResponse}</pre>
+      {loading && <div className="text-center p-8"><LoaderCircle className="animate-spin inline-block" /> Loading KPIs...</div>}
+      {error && <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>}
+      
+      {!loading && !error && (
+        <>
+        {leads.length === 0 ? (
+           <div className="text-center py-16 text-gray-500 dark:text-gray-400">No leads found in the selected range.</div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <h3 className="font-semibold mb-3">Leads by Channel</h3>
+              <div className="space-y-2">
+                {aggregates.channelArr.map(({ name, count }) => {
+                  const max = aggregates.channelArr[0]?.count || 1;
+                  const w = `${Math.max(6, Math.round((count / max) * 100))}%`;
+                  return (
+                    <div key={name}>
+                      <div className="flex justify-between text-xs mb-1 opacity-75">
+                        <span>{name}</span><span>{count}</span>
+                      </div>
+                      <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded">
+                        <div className="h-3 bg-blue-600 rounded" style={{ width: w }} title={`${name}: ${count}`} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-          )}
-        </Card>
+            </Card>
+            <Card>
+              <h3 className="font-semibold mb-3">Leads per Hour</h3>
+              <div className="flex items-end gap-1 h-28">
+                {aggregates.hourArr.map(({ hour, count }) => {
+                  const max = Math.max(...aggregates.hourArr.map(x => x.count), 1);
+                  const h = `${Math.round((count / max) * 100)}%`;
+                  return (
+                    <div key={hour} className="flex-1 flex flex-col justify-end items-center">
+                      <div className="w-full bg-indigo-600 rounded-t" style={{ height: h || '1px' }} title={`${hour}:00 - ${hour}:59 → ${count} leads`} />
+                      <div className="text-[10px] text-center mt-1 opacity-70">{hour}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+             <Card className="lg:col-span-2">
+                <h3 className="font-semibold mb-3">Leads per Day</h3>
+                 <div className="flex items-end gap-1 h-28">
+                    {aggregates.dayArr.map(({ date, count }) => {
+                        const max = Math.max(...aggregates.dayArr.map(x => x.count), 1);
+                        const h = `${Math.round((count / max) * 100)}%`;
+                        return (
+                        <div key={date} className="flex-1 flex flex-col justify-end items-center" title={`${date}: ${count} leads`}>
+                            <div className="w-full bg-emerald-600 rounded-t" style={{ height: h || '1px' }} />
+                            <div className="text-[10px] text-center mt-1 opacity-70 transform -rotate-45">{date.substring(5)}</div>
+                        </div>
+                        );
+                    })}
+                </div>
+            </Card>
+          </div>
+        )}
+        </>
       )}
     </div>
   );
