@@ -10,6 +10,34 @@ import { sendWhatsApp, isReady } from '../services/messaging';
 import { WHATSAPP } from '../lib/config';
 import { Mail, MessageSquare, CheckCircle2, MoreVertical, Calendar, Phone, Send, Plane, Clock, LoaderCircle, Search, UserPlus } from 'lucide-react';
 
+// Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
+function asDate(x: any): Date | null {
+  // Firestore Timestamp tiene .toDate()
+  // @ts-ignore
+  if (x && typeof x === 'object' && typeof x.toDate === 'function') {
+    try { const d = x.toDate(); return isFinite(d.getTime()) ? d : null; } catch { return null; }
+  }
+  if (typeof x === 'number') {
+    const d = new Date(x);
+    return isFinite(d.getTime()) ? d : null;
+  }
+  if (typeof x === 'string') {
+    const s = x.trim();
+    if (!s) return null;
+    // Admite "YYYY-MM-DD" y ISO; Date(...) lo tolera, pero validamos
+    const d = new Date(s);
+    return isFinite(d.getTime()) ? d : null;
+  }
+  if (x instanceof Date) {
+    return isFinite(x.getTime()) ? x : null;
+  }
+  return null;
+}
+
+function isValidDate(d: Date | null): d is Date {
+  return !!(d && isFinite(d.getTime()));
+}
+
 // Helpers locales para compatibilidad
 type AnyLead = Lead & Record<string, any>;
 
@@ -86,7 +114,7 @@ const LeadList: React.FC = () => {
     setError(null);
 
     try {
-      const queryConstraints = [
+      const queryConstraints: any[] = [
         where('event_code', '==', EVENT_CODE),
         orderBy('created_at', 'desc'),
         limit(PAGE_SIZE)
@@ -113,7 +141,8 @@ const LeadList: React.FC = () => {
       const snap = await getDocs(q);
       const newLeads = snap.docs.map(d => {
         const data = d.data();
-        const createdAt = data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : new Date().toISOString();
+        const date = asDate(data.created_at);
+        const createdAt = isValidDate(date) ? date.toISOString() : new Date(0).toISOString();
         return { id: d.id, ...data, created_at: createdAt } as AnyLead;
       });
       
@@ -139,13 +168,23 @@ const LeadList: React.FC = () => {
 
   const filteredLeads = useMemo(() => {
     const txt = search.trim().toLowerCase();
-    if (!txt) return leads;
-    return leads.filter(l => 
-      !txt || 
-      (l.name || '').toLowerCase().includes(txt) || 
-      (l.company || '').toLowerCase().includes(txt) || 
-      (l.email || '').toLowerCase().includes(txt)
-    );
+    
+    const baseList = txt 
+        ? leads.filter(l => 
+            (l.name || '').toLowerCase().includes(txt) || 
+            (l.company || '').toLowerCase().includes(txt) || 
+            (l.email || '').toLowerCase().includes(txt)
+          )
+        : leads;
+        
+    return baseList.sort((a, b) => {
+        const da = asDate(a.created_at);
+        const db = asDate(b.created_at);
+        const ta = isValidDate(da) ? da.getTime() : 0;
+        const tb = isValidDate(db) ? db.getTime() : 0;
+        return tb - ta; // desc
+    });
+
   }, [leads, search]);
 
   const handleUpdateLeadState = (id: string, patch: Partial<Lead>) => {
@@ -245,25 +284,28 @@ const LeadList: React.FC = () => {
       <>
         {/* Mobile View */}
         <div className="md:hidden space-y-3">
-          {filteredLeads.map(lead => (
-            <div key={lead.id} onClick={() => setSelectedLead(lead)} className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 bg-white dark:bg-gray-900 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-base font-semibold">{lead.name || '—'}</div>
-                  <div className="text-sm opacity-70">{lead.company || '—'}</div>
+          {filteredLeads.map(lead => {
+            const createdAt = asDate(lead.created_at);
+            return (
+                <div key={lead.id} onClick={() => setSelectedLead(lead)} className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 bg-white dark:bg-gray-900 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                    <div className="text-base font-semibold">{lead.name || '—'}</div>
+                    <div className="text-sm opacity-70">{lead.company || '—'}</div>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700`}>{lead.status || 'NEW'}</span>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700`}>{lead.status || 'NEW'}</span>
-              </div>
-              <div className="text-sm opacity-80">
-                <div>{lead.email || '—'}</div>
-                <div>{resolveLeadPhone(lead) || '—'}</div>
-              </div>
-              <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex items-center justify-between">
-                {renderActions(lead)}
-                <span className="text-xs text-gray-400">{new Date(lead.created_at).toLocaleDateString()}</span>
-              </div>
-            </div>
-          ))}
+                <div className="text-sm opacity-80">
+                    <div>{lead.email || '—'}</div>
+                    <div>{resolveLeadPhone(lead) || '—'}</div>
+                </div>
+                <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex items-center justify-between">
+                    {renderActions(lead)}
+                    <span className="text-xs text-gray-400">{isValidDate(createdAt) ? createdAt.toLocaleDateString() : '—'}</span>
+                </div>
+                </div>
+            );
+        })}
         </div>
 
         {/* Desktop View */}

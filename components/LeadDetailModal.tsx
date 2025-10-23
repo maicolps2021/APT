@@ -6,6 +6,46 @@ import { EVENT_CODE, WHATSAPP } from '../lib/config';
 import { sendWhatsApp, isReady, providerName } from '../services/messaging';
 import { X, Save, MessageSquare, Mail, LoaderCircle } from 'lucide-react';
 
+// Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
+function asDate(x: any): Date | null {
+  // Firestore Timestamp tiene .toDate()
+  // @ts-ignore
+  if (x && typeof x === 'object' && typeof x.toDate === 'function') {
+    try { const d = x.toDate(); return isFinite(d.getTime()) ? d : null; } catch { return null; }
+  }
+  if (typeof x === 'number') {
+    const d = new Date(x);
+    return isFinite(d.getTime()) ? d : null;
+  }
+  if (typeof x === 'string') {
+    const s = x.trim();
+    if (!s) return null;
+    // Admite "YYYY-MM-DD" y ISO; Date(...) lo tolera, pero validamos
+    const d = new Date(s);
+    return isFinite(d.getTime()) ? d : null;
+  }
+  if (x instanceof Date) {
+    return isFinite(x.getTime()) ? x : null;
+  }
+  return null;
+}
+
+function isValidDate(d: Date | null): d is Date {
+  return !!(d && isFinite(d.getTime()));
+}
+
+// Para <input type="datetime-local"> se necesita "YYYY-MM-DDTHH:mm"
+function toLocalInputValue(d: Date | null): string {
+  if (!isValidDate(d)) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
+
 // Helpers to safely resolve phone number from various possible fields
 type AnyLead = Lead & Record<string, any>;
 
@@ -46,7 +86,7 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
   const [formData, setFormData] = useState({
     scoring: lead.scoring || 'C',
     next_step: lead.next_step || 'Condiciones',
-    meeting_at_local: lead.meeting_at ? new Date(lead.meeting_at).toISOString().slice(0, 16) : '',
+    meeting_at_local: toLocalInputValue(asDate(lead.meeting_at)),
     notes: lead.notes || '',
   });
   const [isSaving, setIsSaving] = useState(false);
@@ -57,7 +97,7 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
       setFormData({
         scoring: lead.scoring || 'C',
         next_step: lead.next_step || 'Condiciones',
-        meeting_at_local: lead.meeting_at ? new Date(lead.meeting_at).toISOString().slice(0, 16) : '',
+        meeting_at_local: toLocalInputValue(asDate(lead.meeting_at)),
         notes: lead.notes || '',
       });
     }
@@ -81,11 +121,18 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
         notes: (formData.notes || '').trim(),
         updated_at: Timestamp.now(),
       };
-      if (formData.meeting_at_local) {
-        payload.meeting_at = Timestamp.fromDate(new Date(formData.meeting_at_local));
+      
+      if (formData.meeting_at_local && formData.meeting_at_local.trim()) {
+        const d = new Date(formData.meeting_at_local);
+        if (isValidDate(d)) {
+            payload.meeting_at = Timestamp.fromDate(d);
+        } else {
+            payload.meeting_at = null;
+        }
       } else {
         payload.meeting_at = null;
       }
+
       await updateDoc(leadRef, payload);
       onClose();
     } catch (err: any) {
