@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useTVMessage } from '../contexts/TVMessageContext';
 import { loadPlaylist, TVItem } from '../lib/tv';
 import { WHATSAPP } from '../lib/config';
 import { QRCodeSVG } from 'qrcode.react';
+import { tvChannel, TVWelcomeMessage } from '../lib/broadcastService';
 
 // Extend TVItem to include a potential welcome message type
 type PlaylistItem = TVItem | { 
     type: 'welcome'; 
-    message: { lead: { name: string; company?: string }, welcomeMessage: string };
+    message: TVWelcomeMessage;
     duration: number;
     src: string; // Add src for key prop uniqueness
 };
@@ -17,9 +17,9 @@ const TVPlayer: React.FC = () => {
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { message, clearMessage } = useTVMessage();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // FIX: Use ReturnType<typeof setTimeout> for browser compatibility instead of NodeJS.Timeout.
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const formUrl = `${window.location.origin}/#/capture`;
   const wa = (WHATSAPP || '').replace(/\D/g, "");
@@ -63,27 +63,33 @@ const TVPlayer: React.FC = () => {
     init();
   }, []);
   
-  // Effect to inject a welcome slide when a new message arrives
+  // Effect to listen for welcome messages from the Broadcast Channel
   useEffect(() => {
-    if (message && playlist.length > 0) {
-      const welcomeSlide: PlaylistItem = {
-        type: 'welcome',
-        message: message,
-        duration: 12000, // Show for 12 seconds
-        src: `welcome-${message.lead.id}` // Unique key
-      };
+    const handleNewMessage = (event: MessageEvent<TVWelcomeMessage>) => {
+      const message = event.data;
+      if (message && message.lead) {
+          const welcomeSlide: PlaylistItem = {
+            type: 'welcome',
+            message: message,
+            duration: 12000, // Show for 12 seconds
+            src: `welcome-${message.lead.id}-${Date.now()}` // Unique key
+          };
 
-      setPlaylist(currentPlaylist => {
-        const newPlaylist = [...currentPlaylist];
-        // Insert the welcome slide right after the current item
-        newPlaylist.splice(currentItemIndex + 1, 0, welcomeSlide);
-        return newPlaylist;
-      });
-      
-      // Clear the message from context so it doesn't get re-added
-      clearMessage(); 
-    }
-  }, [message, clearMessage, playlist.length, currentItemIndex]);
+          setPlaylist(currentPlaylist => {
+            const newPlaylist = [...currentPlaylist];
+            // Insert the welcome slide right after the current item
+            newPlaylist.splice(currentItemIndex + 1, 0, welcomeSlide);
+            return newPlaylist;
+          });
+      }
+    };
+
+    tvChannel.addEventListener('message', handleNewMessage);
+
+    return () => {
+      tvChannel.removeEventListener('message', handleNewMessage);
+    };
+  }, [currentItemIndex]);
 
 
   useEffect(() => {

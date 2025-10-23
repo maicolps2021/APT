@@ -1,6 +1,5 @@
 import React from 'react';
 import { AuthProvider } from './contexts/AuthContext';
-import { TVMessageProvider } from './contexts/TVMessageContext';
 import { DashboardLayout } from './components/DashboardLayout';
 
 // Import pages
@@ -60,9 +59,7 @@ const SimpleRouter = () => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <TVMessageProvider>
-        <SimpleRouter />
-      </TVMessageProvider>
+      <SimpleRouter />
     </AuthProvider>
   );
 };

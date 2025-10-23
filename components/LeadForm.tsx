@@ -4,7 +4,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ORG_UUID, EVENT_CODE, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
 import { generateWelcomeMessage } from '../lib/geminiService';
-import { useTVMessage } from '../contexts/TVMessageContext';
+import { tvChannel } from '../lib/broadcastService';
 import { CheckCircle, LoaderCircle, UserPlus } from 'lucide-react';
 import { hasGemini } from '../lib/ai';
 
@@ -28,7 +28,6 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
   const [formData, setFormData] = useState<Partial<Lead>>(initialFormData);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { showMessage } = useTVMessage();
 
   useEffect(() => {
     if (successLead) {
@@ -91,7 +90,8 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
 
       if (hasGemini()) {
         const welcomeMessage = await generateWelcomeMessage(newLead);
-        showMessage(newLead, welcomeMessage);
+        // Use Broadcast Channel to send the message to the TV display
+        tvChannel.postMessage({ lead: newLead, welcomeMessage });
       }
       
       onSuccess(newLead);
