@@ -9,7 +9,7 @@ export interface Lead {
   slot: 'AM' | 'PM';
   name: string;
   company?: string;
-  role?: 'Guia' | 'Agencia' | 'Hotel' | 'Mayorista' | 'Otro';
+  role?: 'Guia' | 'Agencia' | 'Hotel' | 'Mayorista' | 'Transportista' | 'Otro';
   channel?: string;
   whatsapp?: string;
   email?: string;

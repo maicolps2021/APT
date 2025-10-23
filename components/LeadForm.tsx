@@ -155,8 +155,8 @@ export function LeadForm({ onSuccess, onReset, successLead }: LeadFormProps) {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <select name="role" className="input" defaultValue="">
-            <option value="" disabled>Canal (Guía/Agencia/Hotel/Mayorista)</option>
-            <option>Guia</option><option>Agencia</option><option>Hotel</option><option>Mayorista</option><option>Otro</option>
+            <option value="" disabled>Canal (Guía/Agencia/Hotel/Mayorista/Transportista)</option>
+            <option>Guia</option><option>Agencia</option><option>Hotel</option><option>Mayorista</option><option>Transportista</option><option>Otro</option>
           </select>
           <select name="interest" className="input" defaultValue="">
             <option value="" disabled>Interés</option>
