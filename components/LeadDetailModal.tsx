@@ -3,8 +3,8 @@ import type { Lead } from '../types';
 import { db } from '../lib/supabaseClient';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { EVENT_CODE, WHATSAPP } from '../lib/config';
-import { sendWhatsApp, isReady, providerName } from '../services/messaging';
-import { X, Save, MessageSquare, Mail, LoaderCircle } from 'lucide-react';
+import { sendWhatsAppVia, providerName } from '../services/messaging';
+import { X, Save, MessageSquare, Mail, LoaderCircle, Bot } from 'lucide-react';
 
 // Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
 function asDate(x: any): Date | null {
@@ -58,12 +58,6 @@ function resolveLeadPhone(lead: AnyLead): string | undefined {
   return undefined;
 }
 
-function normPhone(p?: string) {
-  if (!p) return '';
-  return p.replace(/[()\-\s]/g, '').trim();
-}
-
-
 interface LeadDetailModalProps {
   lead: Lead;
   isOpen: boolean;
@@ -74,12 +68,6 @@ function buildWaText(lead: Lead) {
   const first = (lead.name || '').split(' ')[0] || 'there';
   const org  = lead.company || 'our team';
   return `Hi ${first}, thanks for visiting our stand today! This is ${org}. Let us know if you'd like a quick call or a tailored proposal.`;
-}
-
-function mailtoLink(lead: Lead) {
-  const subject = encodeURIComponent(`[${EVENT_CODE}] Follow-up`);
-  const body = encodeURIComponent(`Hi ${lead.name || ''},\n\nThanks for visiting our stand. Let us know if you'd like a quick call or a tailored proposal.\n\nBest regards,`);
-  return `mailto:${lead.email || ''}?subject=${subject}&body=${body}`;
 }
 
 const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose }) => {
@@ -193,34 +181,57 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Quick Actions</h3>
             <div className="flex flex-wrap gap-2">
-               <button
-                  type="button"
-                  title={isReady() ? 'Send WhatsApp' : 'Open WhatsApp link'}
-                  aria-label="WhatsApp"
-                  className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-60"
-                  onClick={async () => {
+                <button
+                    type="button"
+                    title="Send via BuilderBot"
+                    aria-label="Send via BuilderBot"
+                    className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-60"
+                    onClick={async () => {
                     try {
-                      const toRaw = resolveLeadPhone(lead as AnyLead) || WHATSAPP;
-                      if (!toRaw) {
-                          alert('No phone number available for this lead.');
-                          return;
-                      }
-                      const to = normPhone(toRaw);
-                      const text = buildWaText(lead);
-                      const res = await sendWhatsApp({ to, text, leadId: lead.id });
-                      alert(res === 'sent' ? 'WhatsApp sent ✅' : 'Opening WhatsApp…');
+                        const toRaw = resolveLeadPhone(lead as AnyLead) || WHATSAPP;
+                        if (!toRaw) { alert('No phone available.'); return; }
+                        const text = buildWaText(lead);
+                        await sendWhatsAppVia('builderbot', { to: toRaw, text, leadId: lead.id });
+                        alert('WhatsApp sent via BuilderBot ✅');
                     } catch (e) {
-                      console.error(e);
-                      alert('Could not send WhatsApp. Check provider or phone.');
+                        console.error(e);
+                        alert('Could not send via BuilderBot. Check credentials or phone.');
                     }
-                  }}
-                  disabled={!isReady() && providerName()==='none'}
+                    }}
+                    disabled={providerName() === 'none'}
                 >
-                  <MessageSquare className="w-5 h-5" />
-                  WhatsApp
+                    <Bot className="w-5 h-5" />
+                    BuilderBot
                 </button>
+
+                <button
+                    type="button"
+                    title="Open WhatsApp link"
+                    aria-label="Open WhatsApp link"
+                    className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400"
+                    onClick={async () => {
+                    try {
+                        const toRaw = resolveLeadPhone(lead as AnyLead) || WHATSAPP;
+                        if (!toRaw) { alert('No phone available.'); return; }
+                        const text = buildWaText(lead);
+                        await sendWhatsAppVia('wa', { to: toRaw, text, leadId: lead.id });
+                    } catch (e) {
+                        console.error(e);
+                        alert('Could not open WhatsApp link.');
+                    }
+                    }}
+                >
+                    <MessageSquare className="w-5 h-5" />
+                    WhatsApp
+                </button>
+                
                 <a
-                  href={mailtoLink(lead)}
+                  href={`mailto:${lead.email || ''}?subject=${encodeURIComponent('Event Follow-up')}&body=${encodeURIComponent(
+`Hi ${lead.name || ''},
+
+Thanks for visiting our stand. Let us know if you'd like a quick call or a tailored proposal.
+
+Best regards,`)}`}
                   target="_blank" rel="noreferrer"
                   title="Send Email" aria-label="Email"
                   className="h-11 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"

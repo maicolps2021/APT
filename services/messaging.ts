@@ -9,6 +9,8 @@ export type SendWhatsAppParams = {
   templateId?: string;
 };
 
+export type Provider = 'builderbot' | 'wa' | 'none';
+
 function normPhone(p?: string) {
   if (!p) return '';
   return p.replace(/[()\-\s]/g,'').trim();
@@ -20,16 +22,23 @@ export function isReady(): boolean {
   return false;
 }
 
-export function providerName(): 'builderbot'|'wa'|'none' {
+export function providerName(): Provider {
   if (MESSENGER === 'builderbot') return hasBuilderBot() ? 'builderbot' : 'wa';
   return MESSENGER;
 }
 
+/** Comportamiento por configuración (retrocompatible) */
 export async function sendWhatsApp({ to, text }: SendWhatsAppParams): Promise<'sent'|'opened'> {
+  return sendWhatsAppVia(providerName(), { to, text });
+}
+
+/** NUEVO: forzar proveedor explícito por acción */
+export async function sendWhatsAppVia(provider: Provider, { to, text }: SendWhatsAppParams): Promise<'sent'|'opened'> {
   const phone = normPhone(to);
-  const provider = providerName();
+  if (!phone) throw new Error('Invalid phone');
 
   if (provider === 'builderbot') {
+    if (!hasBuilderBot()) throw new Error('BuilderBot not available');
     await sendBuilderBotMessage(phone, text);
     return 'sent';
   }

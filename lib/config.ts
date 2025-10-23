@@ -1,43 +1,42 @@
-// FIX: Removed reference to "vite/client" which was causing a type definition error.
-// Using a type assertion on import.meta.env to bypass the missing types, which should be
-// configured in tsconfig.json.
-const env = (import.meta as any).env;
+// lib/config.ts
+// This file centralizes all environment-dependent configurations for the application.
 
-// Firebase Environment Variables
-export const FIREBASE_CONFIG = {
-  apiKey: env.VITE_FIREBASE_API_KEY,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: env.VITE_FIREBASE_APP_ID,
-};
+// Using import.meta.env for Vite environment variables.
+// In a real application, these would be defined in a .env file.
+// e.g., VITE_ORG_UUID="your-uuid-here"
 
-// App-specific Environment Variables
-export const ORG_UUID = env.VITE_ORG_UUID;
-export const EVENT_CODE = env.VITE_EVENT_CODE;
-export const EVENT_DATES = env.VITE_EVENT_DATES ?? '2025-10-27,2025-10-28,2025-10-29';
-export const TV_BUCKET = env.VITE_TV_BUCKET ?? 'tv'; // This now refers to the root folder in Firebase Storage
-export const TV_PREFIX = env.VITE_TV_PREFIX ?? 'conagui2025';
-export const BUILDERBOT_API_KEY = env.VITE_BUILDERBOT_API_KEY;
-export const BUILDERBOT_ID = env.VITE_BUILDERBOT_ID;
-export const VITE_API_KEY = env.VITE_API_KEY;
+// --- Event Configuration ---
+export const ORG_UUID = import.meta.env.VITE_ORG_UUID || 'b3b7c8f0-1e1a-4b0a-8b1a-0e1a4b0a8b1a';
+export const EVENT_CODE = import.meta.env.VITE_EVENT_CODE || 'CONAGUI2024';
+export const EVENT_DATES = import.meta.env.VITE_EVENT_DATES || '2024-08-27, 2024-08-28, 2024-08-29';
 
-// Messaging Configuration
-// Preferred messenger: 'builderbot' | 'wa' | 'none'
-export const MESSENGER = (env.VITE_MESSENGER || 'wa') as 'builderbot'|'wa'|'none';
+// --- Contact & Messaging ---
+export const WHATSAPP = import.meta.env.VITE_WHATSAPP || '+50688888888';
+export const MESSENGER: 'builderbot' | 'wa' | 'none' = (import.meta.env.VITE_MESSENGER as any) || 'wa';
 
-// Auto-send messages (for future use)
-export const MSG_AUTO = (env.VITE_MSG_AUTO || 'false') === 'true';
+// --- API Keys & Integration ---
+// For Gemini. The file lib/ai.ts expects this variable name.
+export const VITE_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+export const BUILDERBOT_API_KEY = import.meta.env.VITE_BUILDERBOT_API_KEY || '';
+export const BUILDERBOT_ID = import.meta.env.VITE_BUILDERBOT_ID || '';
 
-// Fallback WhatsApp number
-export const WHATSAPP = env.VITE_WHATSAPP || '';
+// --- Firebase Configuration ---
+// This should be a JSON string in your .env file.
+// Example: VITE_FIREBASE_CONFIG='{"apiKey": "...", "authDomain": "...", ...}'
+export const FIREBASE_CONFIG = (() => {
+    try {
+        // Fallback to an empty string if env var is not set to avoid parsing 'undefined'
+        return JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG || '{}');
+    } catch (e) {
+        console.error("Failed to parse VITE_FIREBASE_CONFIG. It must be a valid JSON string.", e);
+        return {};
+    }
+})();
 
-// TV overlay settings
-export const TV_WELCOME_DURATION_MS = Number(env.VITE_TV_WELCOME_DURATION_MS || 12000);
-// 'glass' | 'gradient'
-export const TV_OVERLAY_THEME = (env.VITE_TV_OVERLAY_THEME || 'glass') as 'glass'|'gradient';
-// Mostrar contador de cola "Up next: N"
-export const TV_SHOW_QUEUE_COUNT = (env.VITE_TV_SHOW_QUEUE_COUNT || 'true') === 'true';
-// Logo (opcional): URL pública o ruta local
-export const TV_LOGO_URL = env.VITE_TV_LOGO_URL || '';
+
+// --- TV Display Configuration ---
+export const TV_PREFIX = import.meta.env.VITE_TV_PREFIX || 'tv-assets-conagui2024';
+export const TV_WELCOME_DURATION_MS = Number(import.meta.env.VITE_TV_WELCOME_DURATION_MS) || 10000;
+export const TV_OVERLAY_THEME: 'glass' | 'gradient' = (import.meta.env.VITE_TV_OVERLAY_THEME as any) || 'glass';
+export const TV_SHOW_QUEUE_COUNT = (import.meta.env.VITE_TV_SHOW_QUEUE_COUNT || 'true') === 'true';
+export const TV_LOGO_URL = import.meta.env.VITE_TV_LOGO_URL || '/logo-apt.svg';
