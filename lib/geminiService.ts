@@ -3,52 +3,50 @@ import type { Lead, KPIsData } from '../types';
 
 export const generateWelcomeMessage = async (lead: Lead): Promise<string> => {
   const ai = getGeminiClient();
-  
-  const fallbackMessage = `A huge welcome to ${lead.name} from ${lead.company}! We're so glad you could join us.`;
+
+  const firstName = (lead.name || '').trim().split(' ')[0] || 'there';
+  const company = (lead.company || '').trim() || 'our team';
+  const fallbackMessage = `Hi ${firstName}! Great to have you here — welcome to ${company}.`;
 
   if (!ai) {
+    console.warn("Gemini client not available, returning fallback welcome message.");
     return fallbackMessage;
   }
 
-  const prompt = `You are a copywriter for an event screen.
-Your task is to write a short, fun, energetic WELCOME message for an attendee.
+  const prompt = `
+System instruction: You are a booth greeter. Write a short, friendly welcome message in English (max 2 short sentences). Avoid emojis.
 
-**Language requirement:** Always write the final message **in English only**. Do not translate into any other language, even if the input is not in English.
-
-**Attendee Details**
-- Name: ${lead.name}
-- Company: ${lead.company || 'Independent'}
-
-**Style & Length**
-- 1–2 sentences max.
-- Friendly, upbeat, professional.
-- You may use at most one emoji, or none. Avoid hashtags and ALL CAPS.
-
-**Content Rules**
-- Greet the person by first name.
-- If company is present, reference it positively once.
-- No sensitive claims, no promises, no slang that could be offensive.
-- Avoid repeating the event name unless it is natural.
-
-**Output**
-- Return only the final message text. No quotes, no prefixes, no markdown, no JSON.`;
+User request:
+- First name: ${firstName}
+- Company: ${company}
+- Context: A message for a big screen at a trade show booth.
+- Tone: Warm, concise, professional.
+- Output: Just the message text, no prefixes or quotes.
+  `.trim();
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
     });
-    return response.text;
+    const text = response.text?.trim();
+    return text || fallbackMessage;
   } catch (error) {
-    console.error("Error generating welcome message:", error);
+    console.error("Error generating welcome message with Gemini:", error);
     return fallbackMessage;
   }
 };
 
 export const generateKpiAnalysis = async (query: string, kpis: KPIsData): Promise<string> => {
   const ai = getGeminiClient();
+  const safeQuery = (query || '').trim();
+
   if (!ai) {
     return "AI client is not available. Please configure the Gemini API key.";
+  }
+
+  if (!kpis) {
+    return "KPI data is not available for analysis.";
   }
 
   const prompt = `
@@ -56,18 +54,18 @@ You are an expert event analyst for "Arenal Private Tours Operated by Small Grou
 You have been provided with the following Key Performance Indicator (KPI) data for the event.
 
 **KPI Data:**
-- Total Leads Captured: ${kpis.total_leads}
+- Total Leads Captured: ${kpis.total_leads || 0}
 - Leads by Channel:
-  ${Object.entries(kpis.leads_by_channel).map(([channel, count]) => `- ${channel}: ${count}`).join('\n  ')}
+  ${Object.entries(kpis.leads_by_channel || {}).map(([channel, count]) => `- ${channel}: ${count}`).join('\n  ') || 'No channel data.'}
 - Leads Captured Per Day:
-  ${kpis.leads_by_day.map(({ day, count }) => `- Day ${day}: ${count}`).join('\n  ')}
+  ${(kpis.leads_by_day || []).map(({ day, count }) => `- Day ${day}: ${count}`).join('\n  ') || 'No daily data.'}
 
 **User's Query:**
-"${query}"
+"${safeQuery || 'Provide a general summary.'}"
 
 Please provide a detailed and insightful analysis based on the data to answer the user's query.
 Your response should be structured, clear, and actionable. Use markdown for formatting.
-  `;
+  `.trim();
 
   try {
     const response = await ai.models.generateContent({
@@ -79,7 +77,7 @@ Your response should be structured, clear, and actionable. Use markdown for form
         },
       },
     });
-    return response.text;
+    return response.text?.trim() || "The analysis returned an empty response.";
   } catch (error) {
     console.error("Error generating KPI analysis:", error);
     if (error instanceof Error) {
