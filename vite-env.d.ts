@@ -14,7 +14,10 @@ interface ImportMetaEnv {
   readonly VITE_WHATSAPP?: string;
 
   // API Keys
+  readonly VITE_API_KEY?: string; // Standard for Cloudflare
   readonly VITE_GEMINI_API_KEY?: string;
+  readonly GEMINI_API_KEY?: string; // Non-prefixed, needs special config to expose
+  readonly VITE_GEMINI_MODEL_ID?: string;
   readonly VITE_BUILDERBOT_API_KEY?: string;
   readonly VITE_BUILDERBOT_ID?: string;
 

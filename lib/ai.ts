@@ -1,18 +1,18 @@
 import { GoogleGenAI } from "@google/genai";
-import { VITE_API_KEY } from './config';
+import { GEMINI_API_KEY } from './config';
 
 let ai: GoogleGenAI | null = null;
 
-if (VITE_API_KEY) {
+if (GEMINI_API_KEY) {
   try {
-    ai = new GoogleGenAI({ apiKey: VITE_API_KEY });
+    ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
   } catch (e) {
     console.error("Failed to initialize GoogleGenAI client:", e);
     ai = null;
   }
 } else {
   console.warn(
-    "Gemini API key (VITE_API_KEY) not found in environment variables. AI-powered features will be disabled."
+    "Gemini API key not found (checked VITE_API_KEY, VITE_GEMINI_API_KEY, GEMINI_API_KEY). AI-powered features will be disabled."
   );
 }
 

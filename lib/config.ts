@@ -66,8 +66,17 @@ export const MSG_AUTO = (ENV.VITE_MSG_AUTO || 'false') === 'true';
 
 
 // --- API Keys & Integration ---
-// For Gemini. The file lib/ai.ts expects this variable name.
-export const VITE_API_KEY = ENV.VITE_GEMINI_API_KEY || '';
+
+// Acepta múltiples alias: preferimos VITE_API_KEY (Cloudflare), luego VITE_GEMINI_API_KEY, luego GEMINI_API_KEY
+export const GEMINI_API_KEY: string =
+  ENV.VITE_API_KEY ||
+  ENV.VITE_GEMINI_API_KEY ||
+  ENV.GEMINI_API_KEY ||
+  '';
+
+// Modelo de IA a utilizar, con un fallback seguro.
+export const GEMINI_MODEL_ID: string = ENV.VITE_GEMINI_MODEL_ID || 'gemini-1.5-flash';
+
 export const BUILDERBOT_API_KEY = ENV.VITE_BUILDERBOT_API_KEY || '';
 export const BUILDERBOT_ID = ENV.VITE_BUILDERBOT_ID || '';
 

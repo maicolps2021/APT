@@ -1,4 +1,5 @@
 import { getGeminiClient } from './ai';
+import { GEMINI_MODEL_ID } from './config';
 import type { Lead, KPIsData } from '../types';
 
 export const generateWelcomeMessage = async (lead: Lead): Promise<string> => {
@@ -26,7 +27,7 @@ User request:
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: GEMINI_MODEL_ID,
       contents: prompt,
     });
     const text = response.text?.trim();
@@ -68,8 +69,10 @@ Your response should be structured, clear, and actionable. Use markdown for form
   `.trim();
 
   try {
+    // Note: The original code used 'gemini-2.5-pro' here.
+    // We are now standardizing on the model from the config for consistency.
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
+      model: GEMINI_MODEL_ID,
       contents: prompt,
       config: {
         thinkingConfig: {
