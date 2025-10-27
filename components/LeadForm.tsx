@@ -10,7 +10,7 @@ import { CheckCircle, LoaderCircle, PartyPopper, RefreshCw } from 'lucide-react'
 import { hasGemini } from '../lib/ai';
 import { LEAD_CATEGORY_LABELS } from '../types';
 import { LEAD_CATEGORY_ORDER } from '../lib/categoryMap';
-import { normalizePhoneCR } from '../lib/phone';
+import { normalizePhone, prettifyLocalCR } from '../lib/phone';
 import { createLeadUnique } from '../lib/leads';
 import { formatCRDay, slotCR } from '../lib/time';
 
@@ -52,9 +52,9 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
     setIsLoading(true);
     setError(null);
     
-    const norm = normalizePhoneCR(formData.whatsapp);
+    const norm = normalizePhone(formData.whatsapp, { defaultCountry: 'CR' });
     if (formData.whatsapp && !norm) {
-        setError("Teléfono inválido. Ingrese un número de 8 dígitos o con prefijo 506.");
+        setError("Teléfono inválido. Use formato internacional (+<código><número>) o 8 dígitos si es de Costa Rica.");
         setIsLoading(false);
         return;
     }
@@ -158,14 +158,28 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label htmlFor="whatsapp" className="label">WhatsApp (optional)</label>
-          <input id="whatsapp" name="whatsapp" type="tel" value={formData.whatsapp || ''} onChange={handleChange} placeholder="+50612345678" className="input" />
+          <input
+            id="whatsapp"
+            name="whatsapp"
+            type="tel"
+            value={formData.whatsapp || ''}
+            onChange={handleChange}
+            onBlur={(e) => {
+              const n = normalizePhone(e.target.value, { defaultCountry: 'CR' });
+              if (n?.local) {
+                setFormData(f => ({ ...f, whatsapp: prettifyLocalCR(n.local!) }));
+              }
+            }}
+            placeholder="+14155550123 o 8888 8888"
+            className="input"
+          />
         </div>
         <div>
           <label htmlFor="email" className="label">Email (optional)</label>
           <input id="email" name="email" type="email" value={formData.email || ''} onChange={handleChange} className="input" />
         </div>
       </div>
-       <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">Please provide at least a WhatsApp number or an email.</p>
+       <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">Admite formato internacional (+código) o 8 dígitos si es CR.</p>
 
       <div>
         <label htmlFor="interest" className="label">Interest</label>

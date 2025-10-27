@@ -1,7 +1,7 @@
 // services/messaging.ts
 import { hasBuilderBot, sendBuilderBotMessage } from './builderbotService';
 import { MESSENGER } from '../lib/config';
-import { normalizePhoneCR } from '../lib/phone';
+import { normalizePhone } from '../lib/phone';
 
 export type SendWhatsAppParams = {
   to: string;
@@ -14,13 +14,13 @@ export type Provider = 'builderbot' | 'wa' | 'none';
 
 function normPhone(p?: string) {
   if (!p) return '';
-  const norm = normalizePhoneCR(p);
+  const norm = normalizePhone(p, { defaultCountry: 'CR' });
   if (norm) {
     // wa.me and builderbot expect digits only, without the '+'
     return norm.e164.substring(1); 
   }
   // Fallback for non-CR numbers or other formats
-  return p.replace(/[()\-\s]/g,'').trim();
+  return p.replace(/\D/g,'').trim();
 }
 
 export function isReady(): boolean {
