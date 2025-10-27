@@ -78,13 +78,46 @@ export async function drawWinner(raffle: Raffle): Promise<Lead | null> {
 
     const randomWinner = leads[Math.floor(Math.random() * leads.length)];
     
-    // Actualizar el documento del sorteo con el ganador
+    // Actualizar el documento del sorteo con el ganador y las estadísticas
     const raffleRef = doc(db, 'raffles', raffle.id);
     await updateDoc(raffleRef, {
         winner_lead_id: randomWinner.id,
         status: 'Drawn',
         drawn_at: serverTimestamp(),
+        tickets_count: leads.length,
+        participants_count: leads.length,
     });
 
     return randomWinner;
+}
+
+/**
+ * Calcula y guarda las estadísticas (conteos) para un sorteo.
+ * Usado como fallback si los contadores no existen en el documento.
+ * @param raffle El objeto del sorteo.
+ * @returns Un objeto con los conteos actualizados.
+ */
+export async function getAndSaveRaffleStats(raffle: Raffle): Promise<{ participants_count: number; tickets_count: number; }> {
+    const dateStr = EVENT_DATES.split(',').find(d => d.trim().endsWith(String(raffle.day).padStart(2, '0')));
+    if (!dateStr) {
+      console.warn(`Could not find date for raffle day ${raffle.day}, cannot calculate stats.`);
+      return { participants_count: 0, tickets_count: 0 };
+    }
+    const raffleDate = new Date(`${dateStr.trim()}T12:00:00Z`);
+
+    const leads = await fetchEligibleLeadsForRaffle({
+        orgId: raffle.org_id || ORG_UUID,
+        eventCode: raffle.event_code || EVENT_CODE,
+        date: raffleDate,
+    });
+
+    const stats = {
+        participants_count: leads.length,
+        tickets_count: leads.length,
+    };
+
+    const raffleRef = doc(db, 'raffles', raffle.id);
+    await updateDoc(raffleRef, stats);
+
+    return stats;
 }

@@ -68,6 +68,8 @@ const RafflePanel: React.FC<RafflePanelProps> = ({ onRaffleDrawn }) => {
         winner_lead_id: randomWinner.id,
         drawn_at: serverTimestamp(),
         status: 'Drawn',
+        tickets_count: leads.length,
+        participants_count: leads.length,
       });
       
       setStatus('drawn');

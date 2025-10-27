@@ -1,6 +1,6 @@
 // services/messaging.ts
 import { hasBuilderBot, sendBuilderBotMessage } from './builderbotService';
-import { MESSENGER } from '../lib/config';
+import { MESSENGER, WHATSAPP } from '../lib/config';
 import { normalizePhone } from '../lib/phone';
 
 export type SendWhatsAppParams = {
@@ -55,4 +55,28 @@ export async function sendWhatsAppVia(provider: Provider, { to, text }: SendWhat
     return 'opened';
   }
   throw new Error('Messenger disabled');
+}
+
+export function resolvePhoneE164(lead: any, fallbackEnv?: string): string {
+  // 1) si ya viene en e164 y luce válido, úsalo
+  const p = String(lead?.phone_e164 || '').trim();
+  if (/^\+\d{7,15}$/.test(p)) return p;
+
+  // 2) intenta normalizar cualquier raw del lead (default CR)
+  const candidates = [
+    lead?.phone, lead?.phone_number, lead?.telefono, lead?.whatsapp, lead?.phone_raw
+  ].filter(Boolean) as string[];
+
+  for (const c of candidates) {
+    const n = normalizePhone(c, { defaultCountry: 'CR' });
+    if (n) return n.e164;
+  }
+
+  // 3) intenta fallback de env si lo hay
+  if (fallbackEnv) {
+    const n = normalizePhone(fallbackEnv, { defaultCountry: 'CR' });
+    if (n) return n.e164;
+  }
+
+  return ''; // no válido
 }

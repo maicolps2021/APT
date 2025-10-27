@@ -8,6 +8,7 @@ import { getResolvedWhatsAppText } from '../lib/templates';
 import { loadMaterials, Material, logShare } from '../lib/materials';
 import { X, Save, MessageSquare, Mail, LoaderCircle, Bot } from 'lucide-react';
 import ActivityLog from './ActivityLog';
+import { sendBuilderBotMessage } from '../services/builderbotService';
 
 // Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
 function asDate(x: any): Date | null {
@@ -136,19 +137,28 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
   const handleSendWhatsApp = async (provider: 'wa' | 'builderbot') => {
     setSendingAction(provider);
     try {
-        const toRaw = resolveLeadPhone(lead as AnyLead);
-        if (!toRaw) throw new Error('No phone number available.');
-        
-        const text = await getResolvedWhatsAppText(lead);
-        if (!text) throw new Error('WhatsApp template is empty. Please configure it in Settings.');
+      const text = await getResolvedWhatsAppText(lead);
+      if (!text) {
+        throw new Error('WhatsApp template is empty. Please configure it in Settings.');
+      }
 
-        await sendWhatsAppVia(provider, { to: toRaw, text, leadId: lead.id });
-        if (provider === 'builderbot') alert('WhatsApp sent via BuilderBot ✅');
-    } catch (e: any) {
-        console.error(e);
-        alert(`Error: ${e.message}`);
+      if (provider === 'builderbot') {
+        await sendBuilderBotMessage(lead, text);
+        alert('Message sent via BuilderBot ✅');
+      } else { // provider === 'wa'
+        const toRaw = resolveLeadPhone(lead as AnyLead);
+        if (!toRaw) throw new Error('No phone number available for WhatsApp.');
+        await sendWhatsAppVia('wa', { to: toRaw, text, leadId: lead.id });
+      }
+    } catch (err: any) {
+      if (String(err?.message).includes('PHONE_INVALID_E164')) {
+        alert('Teléfono inválido. Complete un número internacional válido (p. ej. +50688263675).');
+      } else {
+        console.error("Error sending message:", err);
+        alert(`Could not send message: ${err.message}`);
+      }
     } finally {
-        setSendingAction(null);
+      setSendingAction(null);
     }
   };
 

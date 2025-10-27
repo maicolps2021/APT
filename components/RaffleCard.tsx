@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Trash2, Sparkles, User2, Ticket, Crown } from 'lucide-react';
 import type { Raffle, Lead } from '../types';
+import { getAndSaveRaffleStats } from '../lib/raffles';
 
 export type RaffleWithWinner = Raffle & {
   winner: Pick<Lead, 'name' | 'company'> | null;
-  // Estos contadores son opcionales ya que no están en el modelo de datos actual
+  // Make counts optional as they might not exist on old docs
   tickets_count?: number;
   participants_count?: number;
 };
@@ -15,8 +16,44 @@ interface RaffleCardProps {
   onDelete: (raffleId: string) => void;
 }
 
-// FIX: Refactored to a const arrow function with React.FC to improve type inference and resolve a props issue.
 export const RaffleCard: React.FC<RaffleCardProps> = ({ raffle, onDraw, onDelete }) => {
+  const [stats, setStats] = useState({
+    tickets: raffle.tickets_count,
+    participants: raffle.participants_count,
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    
+    // If stats are missing from the prop, fetch them on-demand.
+    if (raffle.tickets_count === undefined || raffle.participants_count === undefined) {
+      getAndSaveRaffleStats(raffle)
+        .then(newStats => {
+          if (isMounted) {
+            setStats({
+              tickets: newStats.tickets_count,
+              participants: newStats.participants_count,
+            });
+          }
+        })
+        .catch(err => {
+          console.error(`Error fetching on-demand stats for raffle ${raffle.id}:`, err);
+          // On error, set to 0 to prevent re-fetching and show a sensible default.
+          if (isMounted) {
+            setStats({ tickets: 0, participants: 0 });
+          }
+        });
+    } else {
+      // If the prop is updated with stats, sync the state.
+      setStats({
+        tickets: raffle.tickets_count,
+        participants: raffle.participants_count,
+      });
+    }
+
+    return () => { isMounted = false; };
+  }, [raffle]); // Rerun when the raffle object changes.
+
   const hasWinner = !!raffle.winner_lead_id && !!raffle.winner;
   const status = raffle.status || (hasWinner ? 'Drawn' : 'Open');
   
@@ -25,6 +62,9 @@ export const RaffleCard: React.FC<RaffleCardProps> = ({ raffle, onDraw, onDelete
     'Open': 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300',
     'Planned': 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
   };
+  
+  const ticketsCount = stats.tickets ?? 0;
+  const participantsCount = stats.participants ?? 0;
 
   return (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm transition-all hover:shadow-md">
@@ -48,11 +88,11 @@ export const RaffleCard: React.FC<RaffleCardProps> = ({ raffle, onDraw, onDelete
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-600 dark:text-gray-300">
         <div className="flex items-center gap-2">
             <Ticket className="w-4 h-4 text-gray-400"/>
-            <span>{(raffle.tickets_count ?? 0).toLocaleString()} tickets</span>
+            <span>{ticketsCount.toLocaleString()} tickets</span>
         </div>
         <div className="flex items-center gap-2">
             <User2 className="w-4 h-4 text-gray-400"/>
-            <span>{(raffle.participants_count ?? 0).toLocaleString()} participants</span>
+            <span>{participantsCount.toLocaleString()} participants</span>
         </div>
       </div>
       

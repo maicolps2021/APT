@@ -1,4 +1,5 @@
-import { BUILDERBOT_API_KEY, BUILDERBOT_ID } from '../lib/config';
+import { BUILDERBOT_API_KEY, BUILDERBOT_ID, WHATSAPP } from '../lib/config';
+import { resolvePhoneE164 } from './messaging';
 
 /**
  * Checks if the BuilderBot API key and Bot ID are configured in the environment variables.
@@ -10,17 +11,24 @@ export function hasBuilderBot(): boolean {
 
 /**
  * Sends a WhatsApp message using the BuilderBot API.
- * @param {string} number The recipient's phone number, including country code.
+ * @param {any} lead The lead object containing phone information.
  * @param {string} content The text content of the message.
  * @returns {Promise<any>} A promise that resolves with the JSON response from the API.
- * @throws Will throw an error if credentials are not configured or if the API request fails.
+ * @throws Will throw an error if credentials are not configured, the phone is invalid, or if the API request fails.
  */
-export async function sendBuilderBotMessage(number: string, content: string): Promise<any> {
+export async function sendBuilderBotMessage(lead: any, content: string): Promise<any> {
   if (!hasBuilderBot()) {
     throw new Error('BuilderBot credentials (API Key and Bot ID) are not configured.');
   }
 
-  const sanitizedNumber = number.replace(/\D/g, "");
+  const phone = resolvePhoneE164(lead, WHATSAPP);
+
+  if (!/^\+\d{7,15}$/.test(phone)) {
+    throw new Error('PHONE_INVALID_E164');
+  }
+
+  // BuilderBot expects the number without the leading '+'
+  const sanitizedNumber = phone.substring(1);
   const url = `https://app.builderbot.cloud/api/v2/${BUILDERBOT_ID}/messages`;
 
   const headers = {
