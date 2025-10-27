@@ -2,8 +2,8 @@ import React, { useState, useEffect, FormEvent } from 'react';
 import type { Lead } from '../types';
 import { db } from '../lib/supabaseClient';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { ORG_UUID, WHATSAPP } from '../lib/config';
-import { sendWhatsAppVia } from '../services/messaging';
+import { ORG_UUID } from '../lib/config';
+import { resolvePhoneE164Strict } from '../services/messaging';
 import { getResolvedWhatsAppText } from '../lib/templates';
 import { loadMaterials, Material, logShare } from '../lib/materials';
 import { X, Save, MessageSquare, Mail, LoaderCircle, Bot } from 'lucide-react';
@@ -47,17 +47,6 @@ function toLocalInputValue(d: Date | null): string {
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
-type AnyLead = Lead & Record<string, any>;
-
-function resolveLeadPhone(lead: AnyLead): string | undefined {
-  const keys = ['phone', 'phone_number', 'telefono', 'whatsapp', 'mobile', 'cell'];
-  for (const k of keys) {
-    const v = lead?.[k];
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
-  return undefined;
-}
-
 interface LeadDetailModalProps {
   lead: Lead;
   isOpen: boolean;
@@ -78,7 +67,8 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
   const [materialId, setMaterialId] = useState<string>('');
   const orgId = lead.org_id || ORG_UUID;
   
-  const hasPhone = !!resolveLeadPhone(lead as AnyLead);
+  const resolvedPhoneE164 = resolvePhoneE164Strict(lead);
+  const hasPhone = !!resolvedPhoneE164;
   const hasEmail = !!lead.email;
 
   useEffect(() => {
@@ -134,25 +124,19 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
     }
   };
 
-  const handleSendWhatsApp = async (provider: 'wa' | 'builderbot') => {
-    setSendingAction(provider);
+  const onSendBuilderBot = async () => {
+    setSendingAction('builderbot');
     try {
       const text = await getResolvedWhatsAppText(lead);
       if (!text) {
         throw new Error('WhatsApp template is empty. Please configure it in Settings.');
       }
-
-      if (provider === 'builderbot') {
-        await sendBuilderBotMessage(lead, text);
-        alert('Message sent via BuilderBot ✅');
-      } else { // provider === 'wa'
-        const toRaw = resolveLeadPhone(lead as AnyLead);
-        if (!toRaw) throw new Error('No phone number available for WhatsApp.');
-        await sendWhatsAppVia('wa', { to: toRaw, text, leadId: lead.id });
-      }
+      // You can add { forceTest: true } here for debugging if needed
+      await sendBuilderBotMessage(lead, text);
+      alert('Message sent via BuilderBot ✅');
     } catch (err: any) {
       if (String(err?.message).includes('PHONE_INVALID_E164')) {
-        alert('Teléfono inválido. Complete un número internacional válido (p. ej. +50688263675).');
+        alert('Teléfono inválido del lead. Ingrese un número internacional válido (p. ej. +50688263675).');
       } else {
         console.error("Error sending message:", err);
         alert(`Could not send message: ${err.message}`);
@@ -162,18 +146,36 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
     }
   };
 
+  const handleOpenWhatsApp = async () => {
+    if (!resolvedPhoneE164) {
+      alert('Teléfono inválido del lead.');
+      return;
+    }
+    setSendingAction('wa');
+    try {
+      const text = await getResolvedWhatsAppText(lead);
+      const url = `https://wa.me/${resolvedPhoneE164.replace('+', '')}?text=${encodeURIComponent(text)}`;
+      window.open(url, '_blank');
+    } catch (err: any) {
+      console.error("Error opening WhatsApp:", err);
+      alert(`Could not prepare WhatsApp message: ${err.message}`);
+    } finally {
+      setSendingAction(null);
+    }
+  };
+
   const selectedMaterial = materials.find(m => m.id === materialId);
 
   async function shareViaWA() {
     if (!selectedMaterial) { alert('Please select a material to share.'); return; }
-    const toRaw = resolveLeadPhone(lead as AnyLead);
-    if (!toRaw) { alert('No WhatsApp number available for this lead.'); return; }
+    if (!resolvedPhoneE164) { alert('No valid WhatsApp number available for this lead.'); return; }
     
     setSendingAction('share-wa');
     try {
         const firstName = (lead.name || '').split(' ')[0] || 'there';
         const text = `Hi ${firstName}, here is the material we discussed: ${selectedMaterial.name}\n${selectedMaterial.url}`;
-        await sendWhatsAppVia('wa', { to: toRaw, text, leadId: lead.id });
+        const url = `https://wa.me/${resolvedPhoneE164.replace('+', '')}?text=${encodeURIComponent(text)}`;
+        window.open(url, '_blank');
         await logShare(orgId, lead.id, selectedMaterial.id, 'wa');
     } catch(e) {
         console.error("Share via WA failed:", e);
@@ -239,8 +241,8 @@ Best regards,`);
               <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Quick Actions</h3>
                 <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => handleSendWhatsApp('builderbot')} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Send via BuilderBot"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'builderbot' ? '':'hidden'}`} /><Bot className={`w-5 h-5 ${sendingAction === 'builderbot' ? 'hidden':''}`} /> BuilderBot</button>
-                    <button type="button" onClick={() => handleSendWhatsApp('wa')} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Open WhatsApp"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'wa' ? '':'hidden'}`} /><MessageSquare className={`w-5 h-5 ${sendingAction === 'wa' ? 'hidden':''}`} /> WhatsApp</button>
+                    <button type="button" onClick={onSendBuilderBot} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Send via BuilderBot"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'builderbot' ? '':'hidden'}`} /><Bot className={`w-5 h-5 ${sendingAction === 'builderbot' ? 'hidden':''}`} /> BuilderBot</button>
+                    <button type="button" onClick={handleOpenWhatsApp} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Open WhatsApp"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'wa' ? '':'hidden'}`} /><MessageSquare className={`w-5 h-5 ${sendingAction === 'wa' ? 'hidden':''}`} /> WhatsApp</button>
                     <a href={`mailto:${lead.email || ''}`} target="_blank" rel="noreferrer" title={!hasEmail ? "No email on record" : "Send Email"} className={`h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-blue-600 text-white hover:bg-blue-700 ${!hasEmail ? 'opacity-60 cursor-not-allowed' : ''} focus:outline-none focus:ring-2 focus:ring-blue-400`}><Mail className="w-5 h-5" /> Email</a>
                 </div>
               </div>

@@ -46,7 +46,9 @@ export async function sendWhatsAppVia(provider: Provider, { to, text }: SendWhat
 
   if (provider === 'builderbot') {
     if (!hasBuilderBot()) throw new Error('BuilderBot not available');
-    await sendBuilderBotMessage(phone, text);
+    // The builderbot service now expects a lead object. This function is now legacy.
+    // We pass a mock lead object for compatibility.
+    await sendBuilderBotMessage({ phone_raw: to }, text);
     return 'sent';
   }
   if (provider === 'wa') {
@@ -57,12 +59,12 @@ export async function sendWhatsAppVia(provider: Provider, { to, text }: SendWhat
   throw new Error('Messenger disabled');
 }
 
-export function resolvePhoneE164(lead: any, fallbackEnv?: string): string {
-  // 1) si ya viene en e164 y luce válido, úsalo
-  const p = String(lead?.phone_e164 || '').trim();
-  if (/^\+\d{7,15}$/.test(p)) return p;
+export function resolvePhoneE164Strict(lead: any): string {
+  // 1) Si ya trae E.164 válido
+  const e = String(lead?.phone_e164 || '').trim();
+  if (/^\+\d{7,15}$/.test(e)) return e;
 
-  // 2) intenta normalizar cualquier raw del lead (default CR)
+  // 2) Intentar normalizar cualquiera de los campos crudos del LEAD
   const candidates = [
     lead?.phone, lead?.phone_number, lead?.telefono, lead?.whatsapp, lead?.phone_raw
   ].filter(Boolean) as string[];
@@ -72,11 +74,12 @@ export function resolvePhoneE164(lead: any, fallbackEnv?: string): string {
     if (n) return n.e164;
   }
 
-  // 3) intenta fallback de env si lo hay
-  if (fallbackEnv) {
-    const n = normalizePhone(fallbackEnv, { defaultCountry: 'CR' });
-    if (n) return n.e164;
-  }
+  // 3) Nada más. NO usar env fallback aquí.
+  return '';
+}
 
-  return ''; // no válido
+/** Úsalo solo cuando explícitamente se quiera testear */
+export function resolveTestRecipientFromEnv(): string {
+  const test = (import.meta as any)?.env?.VITE_TEST_RECIPIENT || '';
+  return /^\+\d{7,15}$/.test(test) ? test : '';
 }
