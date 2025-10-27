@@ -1,4 +1,6 @@
 
+export type LeadSource = 'QR' | 'MANUAL';
+
 export type LeadCategory =
   | 'touroperador'
   | 'hoteles'
@@ -21,7 +23,7 @@ export interface Lead {
   created_at: string;
   org_id: string;
   event_code: string;
-  source: 'QR' | 'MANUAL';
+  source: LeadSource;
   day: number;
   slot: 'AM' | 'PM';
   name: string;

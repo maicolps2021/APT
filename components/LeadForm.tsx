@@ -1,4 +1,5 @@
 
+
 import React, { useState, FormEvent, useMemo, useRef } from 'react';
 import { ORG_UUID, EVENT_CODE, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
@@ -67,20 +68,21 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
         return;
     }
 
+    const source: Lead['source'] = 'MANUAL';
+
     const newLeadData = {
       ...formData,
       org_id: ORG_UUID,
       event_code: EVENT_CODE,
-      source: 'MANUAL',
+      source,
       day: getCurrentEventDay(),
       slot: getCurrentSlot(),
       phone_raw: formData.whatsapp || '',
-      phone_e164: norm?.e164,
-      phone_local: norm?.local,
+      phone_e164: norm?.e164 || '',
+      phone_local: norm?.local || '',
     };
 
     try {
-      // @ts-ignore
       const leadId = await createLeadUnique(newLeadData);
       const createdLead: Lead = { ...newLeadData, id: leadId, created_at: new Date().toISOString() };
       
