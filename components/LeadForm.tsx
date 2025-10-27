@@ -1,7 +1,5 @@
 
 import React, { useState, FormEvent, useMemo, useRef } from 'react';
-import { db } from '../lib/supabaseClient';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ORG_UUID, EVENT_CODE, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
 import { generateWelcomeMessage } from '../lib/geminiService';
@@ -10,6 +8,8 @@ import { CheckCircle, LoaderCircle, PartyPopper, RefreshCw } from 'lucide-react'
 import { hasGemini } from '../lib/ai';
 import { LEAD_CATEGORY_LABELS } from '../types';
 import { LEAD_CATEGORY_ORDER } from '../lib/categoryMap';
+import { normalizePhoneCR } from '../lib/phone';
+import { createLeadUnique } from '../lib/leads';
 
 
 interface LeadFormProps {
@@ -59,19 +59,30 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
 
     setIsLoading(true);
     setError(null);
+    
+    const norm = normalizePhoneCR(formData.whatsapp);
+    if (formData.whatsapp && !norm) {
+        setError("Teléfono inválido. Ingrese un número de 8 dígitos o con prefijo 506.");
+        setIsLoading(false);
+        return;
+    }
 
-    const newLeadData: Omit<Lead, 'id' | 'created_at'> = {
+    const newLeadData = {
       ...formData,
       org_id: ORG_UUID,
       event_code: EVENT_CODE,
       source: 'MANUAL',
       day: getCurrentEventDay(),
       slot: getCurrentSlot(),
+      phone_raw: formData.whatsapp || '',
+      phone_e164: norm?.e164,
+      phone_local: norm?.local,
     };
 
     try {
-      const docRef = await addDoc(collection(db, 'leads'), { ...newLeadData, created_at: serverTimestamp() });
-      const createdLead: Lead = { ...newLeadData, id: docRef.id, created_at: new Date().toISOString() };
+      // @ts-ignore
+      const leadId = await createLeadUnique(newLeadData);
+      const createdLead: Lead = { ...newLeadData, id: leadId, created_at: new Date().toISOString() };
       
       onSuccess(createdLead);
 
@@ -95,8 +106,12 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
       });
 
     } catch (err: any) {
-      console.error("Error saving lead:", err);
-      setError("Could not save the lead. Please check the console for details.");
+       if (err?.message === 'DUPLICATE_PHONE') {
+          setError('Este número de teléfono ya ha sido registrado.');
+      } else {
+          console.error("Error saving lead:", err);
+          setError("Could not save the lead. Please check the console for details.");
+      }
     } finally {
       setIsLoading(false);
     }

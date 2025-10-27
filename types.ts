@@ -29,6 +29,9 @@ export interface Lead {
   role?: LeadCategory;
   channel?: string;
   whatsapp?: string;
+  phone_raw?: string;
+  phone_e164?: string;
+  phone_local?: string;
   email?: string;
   interest?: 'Tour' | 'Traslado' | 'Ambos';
   // FIX: Added 'WhatsApp' to the next_step union type to match its usage across the application.
