@@ -234,20 +234,31 @@ const KPIs: React.FC = () => {
                 <div className="flex items-center justify-center h-28">
                   <LoaderCircle className="animate-spin" />
                 </div>
-              ) : (
-                <div className="flex items-end gap-1 h-28">
-                  {hourlyData.map(({ hour, count }) => {
-                    const max = Math.max(...hourlyData.map(x => x.count), 1);
-                    const h = `${Math.round((count / max) * 100)}%`;
+              ) : (() => {
+                  const total = hourlyData.reduce((sum, item) => sum + item.count, 0);
+                  if (total === 0) {
                     return (
-                      <div key={hour} className="flex-1 flex flex-col justify-end items-center">
-                        <div className="w-full bg-indigo-600 rounded-t" style={{ height: h || '1px' }} title={`${hour}:00 - ${hour}:59 → ${count} leads`} />
-                        <div className="text-[10px] text-center mt-1 opacity-70">{hour}</div>
+                      <div className="flex items-center justify-center h-28 text-sm text-center text-gray-500 dark:text-gray-400">
+                        No leads recorded for this day.
                       </div>
                     );
-                  })}
-                </div>
-              )}
+                  }
+
+                  const max = Math.max(...hourlyData.map(x => x.count), 1);
+                  return (
+                    <div className="flex items-end gap-1 h-28">
+                      {hourlyData.map(({ hour, count }) => {
+                        const h = `${Math.round((count / max) * 100)}%`;
+                        return (
+                          <div key={hour} className="flex-1 flex flex-col justify-end items-center">
+                            <div className="w-full bg-indigo-600 rounded-t" style={{ height: h || '1px' }} title={`${hour}:00 - ${hour}:59 → ${count} leads`} />
+                            <div className="text-[10px] text-center mt-1 opacity-70">{hour}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
             </Card>
              <Card className="lg:col-span-2">
                 <h3 className="font-semibold mb-3">Leads per Day</h3>

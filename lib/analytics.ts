@@ -1,26 +1,28 @@
 // lib/analytics.ts
-import { collection, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './supabaseClient';
 
 const TZ = 'America/Costa_Rica';
 
-function startEndOfCRDay(d: Date) {
+// This helper function formats a date into a "YYYY-MM-DD" string based on the Costa Rica timezone.
+// It's crucial for querying the `day` field which should be stored in the same format.
+function formatCRDay(d: Date): string {
   const y = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric' }).format(d);
   const m = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, month: '2-digit' }).format(d);
   const dd = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, day: '2-digit' }).format(d);
-  // Using the explicit offset is the correct way to handle this without libraries
-  const start = new Date(`${y}-${m}-${dd}T00:00:00-06:00`);
-  const end = new Date(`${y}-${m}-${dd}T23:59:59.999-06:00`);
-  return { start, end };
+  return `${y}-${m}-${dd}`;
 }
 
 export type LeadsPerHourPoint = { hour: number; count: number };
 
 export async function getLeadsPerHour(opts: {
-  orgId: string; eventCode: string; date: Date;
+  orgId: string;
+  eventCode: string;
+  date: Date;
 }): Promise<LeadsPerHourPoint[]> {
-  const { start, end } = startEndOfCRDay(opts.date);
+  const day = formatCRDay(opts.date);
 
+  // Initialize 24 buckets, one for each hour, to ensure the chart always has 24 bars.
   const buckets = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: 0 }));
 
   const leadsRef = collection(db, 'leads');
@@ -28,16 +30,18 @@ export async function getLeadsPerHour(opts: {
     leadsRef,
     where('org_id', '==', opts.orgId),
     where('event_code', '==', opts.eventCode),
-    where('created_at', '>=', Timestamp.fromDate(start)),
-    where('created_at', '<=', Timestamp.fromDate(end)),
-    orderBy('created_at', 'asc')
+    where('day', '==', day) // Query by the pre-calculated 'day' field for simplicity and timezone consistency.
   );
 
   const snap = await getDocs(q);
   snap.forEach(doc => {
     const data = doc.data();
-    const createdAt = data?.created_at?.toDate();
-    if (!createdAt) return;
+    // Use created_at for bucketing. Fallback to updated_at if necessary, or parse from string.
+    const createdAt = data?.created_at?.toDate?.() ?? 
+                      data?.updated_at?.toDate?.() ??
+                      (typeof data?.created_at === 'string' ? new Date(data.created_at) : null);
+
+    if (!createdAt || isNaN(createdAt.getTime())) return;
 
     const hourStr = new Intl.DateTimeFormat('en-US', {
       timeZone: TZ,
@@ -45,10 +49,14 @@ export async function getLeadsPerHour(opts: {
       hour12: false,
     }).format(createdAt);
     
-    // Intl can return '24' for midnight. We map it to hour 0.
-    const h = Number(hourStr) % 24;
-
-    if (h >= 0 && h <= 23) {
+    // `Intl.DateTimeFormat` can return '24' for midnight, which should be mapped to hour 0.
+    let h = Number(hourStr);
+    if (h === 24) {
+        h = 0;
+    }
+    
+    // Ensure the hour is within the valid range [0, 23] and increment the corresponding bucket.
+    if (h >= 0 && h <= 23 && !Number.isNaN(h)) {
       buckets[h].count += 1;
     }
   });
