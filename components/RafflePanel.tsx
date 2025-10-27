@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { db } from '../lib/supabaseClient'; // Path kept for simplicity, points to Firebase now
-import { collection, getDocs, addDoc, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { EVENT_CODE, ORG_UUID, EVENT_DATES } from '../lib/config';
 import type { Lead } from '../types';
 import Card from './Card';
 import { LoaderCircle } from 'lucide-react';
 import { hasBuilderBot, sendBuilderBotMessage } from '../services/builderbotService';
+import { fetchEligibleLeadsForRaffle } from '../lib/raffles';
 
 interface RafflePanelProps {
   onRaffleDrawn: () => void;
@@ -40,15 +41,17 @@ const RafflePanel: React.FC<RafflePanelProps> = ({ onRaffleDrawn }) => {
     setError(null);
 
     try {
-      const leadsRef = collection(db, 'leads');
-      const q = query(leadsRef,
-          where('event_code', '==', EVENT_CODE),
-          where('org_id', '==', ORG_UUID),
-          where('day', '==', selectedDay)
-      );
-      const querySnapshot = await getDocs(q);
-      
-      const leads = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lead));
+      const dateStr = EVENT_DATES.split(',').find(d => d.trim().endsWith(String(selectedDay).padStart(2, '0')));
+      if (!dateStr) {
+          throw new Error(`Could not find a date for day ${selectedDay} in event configuration.`);
+      }
+      const raffleDate = new Date(`${dateStr.trim()}T12:00:00Z`);
+
+      const leads = await fetchEligibleLeadsForRaffle({
+          orgId: ORG_UUID,
+          eventCode: EVENT_CODE,
+          date: raffleDate,
+      });
 
       if (leads.length === 0) {
         throw new Error(`No leads found for day ${selectedDay}.`);
