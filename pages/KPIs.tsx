@@ -6,6 +6,7 @@ import Card from '../components/Card';
 import KpiFilters from '../components/KpiFilters';
 import { toCSV, downloadCSV } from '../lib/csv';
 import { LoaderCircle } from 'lucide-react';
+import { getLeadsPerHour, LeadsPerHourPoint } from '../lib/analytics';
 
 // Helpers
 function toDateValue(d: Date) { return d.toISOString().slice(0, 10); } // YYYY-MM-DD
@@ -34,6 +35,9 @@ const KPIs: React.FC = () => {
   const [channels, setChannels] = useState<string[]>([]);
   const [currentTotal, setCurrentTotal] = useState<number>(0);
   const [prevTotal, setPrevTotal] = useState<number>(0);
+  
+  const [hourlyData, setHourlyData] = useState<LeadsPerHourPoint[]>([]);
+  const [loadingHourly, setLoadingHourly] = useState(true);
 
   useEffect(() => { localStorage.setItem('kpi_channel', channel); }, [channel]);
 
@@ -98,31 +102,46 @@ const KPIs: React.FC = () => {
   }, [fetchAll]);
   
   useEffect(() => {
+    if (from === to) {
+      setLoadingHourly(true);
+      const selectedDate = new Date(from + 'T12:00:00Z');
+      getLeadsPerHour({
+        orgId: ORG_UUID,
+        eventCode: EVENT_CODE,
+        date: selectedDate,
+      })
+      .then(setHourlyData)
+      .catch(err => console.error("Failed to load hourly data", err))
+      .finally(() => setLoadingHourly(false));
+    } else {
+      setHourlyData([]);
+      setLoadingHourly(false);
+    }
+  }, [from, to]);
+  
+  useEffect(() => {
       const uniqueChannels = Array.from(new Set(leads.map(getChannel))).sort();
       setChannels(uniqueChannels);
   }, [leads]);
 
   const aggregates = useMemo(() => {
     const byDay = new Map<string, number>();
-    const byHour = new Map<number, number>();
     const byChannel = new Map<string, number>();
 
     leads.forEach(l => {
       const d = getCreatedAt(l);
       const dk = dayKey(d);
       byDay.set(dk, (byDay.get(dk) || 0) + 1);
-      byHour.set(d.getHours(), (byHour.get(d.getHours()) || 0) + 1);
       byChannel.set(getChannel(l), (byChannel.get(getChannel(l)) || 0) + 1);
     });
 
     const dayArr = Array.from(byDay.entries()).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
-    const hourArr = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: byHour.get(h) || 0 }));
     const channelArr = Array.from(byChannel.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
 
     const todayKey = dayKey(new Date());
     const leadsToday = leads.filter(l => dayKey(getCreatedAt(l)) === todayKey).length;
 
-    return { dayArr, hourArr, channelArr, leadsToday };
+    return { dayArr, channelArr, leadsToday };
   }, [leads]);
 
   function onExport() {
@@ -207,18 +226,28 @@ const KPIs: React.FC = () => {
             </Card>
             <Card>
               <h3 className="font-semibold mb-3">Leads per Hour</h3>
-              <div className="flex items-end gap-1 h-28">
-                {aggregates.hourArr.map(({ hour, count }) => {
-                  const max = Math.max(...aggregates.hourArr.map(x => x.count), 1);
-                  const h = `${Math.round((count / max) * 100)}%`;
-                  return (
-                    <div key={hour} className="flex-1 flex flex-col justify-end items-center">
-                      <div className="w-full bg-indigo-600 rounded-t" style={{ height: h || '1px' }} title={`${hour}:00 - ${hour}:59 → ${count} leads`} />
-                      <div className="text-[10px] text-center mt-1 opacity-70">{hour}</div>
-                    </div>
-                  );
-                })}
-              </div>
+              {from !== to ? (
+                <div className="flex items-center justify-center h-28 text-sm text-center text-gray-500 dark:text-gray-400 p-4">
+                  Select a single day in the date range to view the hourly breakdown.
+                </div>
+              ) : loadingHourly ? (
+                <div className="flex items-center justify-center h-28">
+                  <LoaderCircle className="animate-spin" />
+                </div>
+              ) : (
+                <div className="flex items-end gap-1 h-28">
+                  {hourlyData.map(({ hour, count }) => {
+                    const max = Math.max(...hourlyData.map(x => x.count), 1);
+                    const h = `${Math.round((count / max) * 100)}%`;
+                    return (
+                      <div key={hour} className="flex-1 flex flex-col justify-end items-center">
+                        <div className="w-full bg-indigo-600 rounded-t" style={{ height: h || '1px' }} title={`${hour}:00 - ${hour}:59 → ${count} leads`} />
+                        <div className="text-[10px] text-center mt-1 opacity-70">{hour}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
              <Card className="lg:col-span-2">
                 <h3 className="font-semibold mb-3">Leads per Day</h3>
