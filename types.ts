@@ -1,4 +1,5 @@
 
+
 export type LeadSource = 'QR' | 'MANUAL';
 
 export type LeadCategory =
@@ -24,7 +25,7 @@ export interface Lead {
   org_id: string;
   event_code: string;
   source: LeadSource;
-  day: number;
+  day: string;
   slot: 'AM' | 'PM';
   name: string;
   company?: string;

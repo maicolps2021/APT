@@ -1,7 +1,8 @@
 
 
+
 import React, { useState, FormEvent, useMemo, useRef } from 'react';
-import { ORG_UUID, EVENT_CODE, EVENT_DATES } from '../lib/config';
+import { ORG_UUID, EVENT_CODE } from '../lib/config';
 import type { Lead } from '../types';
 import { generateWelcomeMessage } from '../lib/geminiService';
 import { emitTvEvent } from '../lib/tvBus';
@@ -11,6 +12,7 @@ import { LEAD_CATEGORY_LABELS } from '../types';
 import { LEAD_CATEGORY_ORDER } from '../lib/categoryMap';
 import { normalizePhoneCR } from '../lib/phone';
 import { createLeadUnique } from '../lib/leads';
+import { formatCRDay, slotCR } from '../lib/time';
 
 
 interface LeadFormProps {
@@ -18,17 +20,6 @@ interface LeadFormProps {
   onReset: () => void;
   successLead: Lead | null;
 }
-
-const getCurrentEventDay = () => {
-    const today = new Date().getUTCDate();
-    const eventDays = (EVENT_DATES as string).split(',').map(d => new Date(d.trim()).getUTCDate());
-    return eventDays.find(d => d === today) || eventDays[0] || new Date().getUTCDate();
-};
-
-const getCurrentSlot = (): 'AM' | 'PM' => {
-    const hour = new Date().getUTCHours(); // Using UTC for consistency
-    return hour < 12 ? 'AM' : 'PM';
-};
 
 export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successLead }) => {
   const initialFormData: Omit<Lead, 'id' | 'created_at' | 'org_id' | 'event_code' | 'day' | 'slot' | 'source'> = {
@@ -69,14 +60,15 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
     }
 
     const source: Lead['source'] = 'MANUAL';
+    const now = new Date();
 
     const newLeadData = {
       ...formData,
       org_id: ORG_UUID,
       event_code: EVENT_CODE,
       source,
-      day: getCurrentEventDay(),
-      slot: getCurrentSlot(),
+      day: formatCRDay(now),
+      slot: slotCR(now),
       phone_raw: formData.whatsapp || '',
       phone_e164: norm?.e164 || '',
       phone_local: norm?.local || '',
@@ -84,7 +76,7 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
 
     try {
       const leadId = await createLeadUnique(newLeadData);
-      const createdLead: Lead = { ...newLeadData, id: leadId, created_at: new Date().toISOString() };
+      const createdLead: Lead = { ...newLeadData, id: leadId, created_at: now.toISOString() };
       
       onSuccess(createdLead);
 
