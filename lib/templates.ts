@@ -42,3 +42,57 @@ export async function getResolvedWhatsAppText(lead: Lead): Promise<string> {
     
     return renderTemplate(tpl, { nombre: firstName });
 }
+
+/**
+ * Renderiza una plantilla reemplazando placeholders {campo}
+ * con valores tomados de `lead` y `settings`.
+ * Si un campo no existe, deja {campo} tal cual (no rompe).
+ */
+export function renderTemplateFromSettings(opts: {
+  template: string;
+  lead: Record<string, any>;
+  settings: Record<string, any>;
+}) {
+  const { template, lead = {}, settings = {} } = opts;
+
+  const name: string = (lead.name || '').toString().trim();
+  const firstName = name.split(' ')[0] || '';
+  const cat = (lead.category || lead.role || '').toString();
+
+  const base: Record<string, any> = {
+    nombre: firstName || name,
+    nombre_completo: name,
+    empresa: lead.company || lead.organization || '',
+    categoria: cat,
+    role: lead.role || '',
+    email: lead.email || '',
+    telefono: lead.phone_e164 || lead.phone || lead.phone_raw || '',
+    dia: lead.day || '',
+    slot: lead.slot || '',
+    evento: settings.event_code || '',
+    org: settings.org_name || settings.organization || '',
+  };
+
+  // Mezcla para soportar placeholders personalizados definidos en Configuración
+  const bag: Record<string, any> = { ...settings, ...lead, ...base };
+
+  return template.replace(/\{([a-zA-Z0-9_\.]+)\}/g, (_, key) => {
+    const v = bag[key];
+    return (v === undefined || v === null) ? `{${key}}` : String(v);
+  });
+}
+
+/**
+ * Usa la MISMA plantilla de WhatsApp definida en Settings (por categoría).
+ * Fallback a 'otro' y luego a un saludo genérico.
+ */
+export function renderWhatsTemplateForLead(opts: {
+  settings: any;
+  lead: any;
+}) {
+  const { settings = {}, lead = {} } = opts;
+  const tpls: Record<string, string> = settings.whatsappTemplates || settings.templates || {};
+  const catKey = String((lead.category || lead.role || 'otro')).toLowerCase();
+  const tpl = tpls[catKey] || tpls['otro'] || 'Hola {nombre}. ¡Gracias por visitarnos!';
+  return renderTemplateFromSettings({ template: tpl, lead, settings });
+}

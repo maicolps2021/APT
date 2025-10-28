@@ -2,13 +2,14 @@ import React, { useState, useEffect, FormEvent } from 'react';
 import type { Lead } from '../types';
 import { db } from '../lib/supabaseClient';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { ORG_UUID } from '../lib/config';
+import { ORG_UUID, EVENT_CODE } from '../lib/config';
 import { resolvePhoneE164Strict } from '../services/messaging';
-import { getResolvedWhatsAppText } from '../lib/templates';
+import { getResolvedWhatsAppText, loadWATemplates } from '../lib/templates';
 import { loadMaterials, Material, logShare } from '../lib/materials';
 import { X, Save, MessageSquare, Mail, LoaderCircle, Bot } from 'lucide-react';
 import ActivityLog from './ActivityLog';
 import { sendBuilderBotMessage } from '../services/builderbotService';
+import { buildMailtoUsingSettings } from '../services/email';
 
 // Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
 function asDate(x: any): Date | null {
@@ -164,6 +165,32 @@ const LeadDetailModal: React.FC<LeadDetailModalProps> = ({ lead, isOpen, onClose
     }
   };
 
+  const handleEmailClick = async () => {
+    setSendingAction('email');
+    try {
+      if (!hasEmail) {
+        throw new Error('El lead no tiene correo.');
+      }
+      const templates = await loadWATemplates(orgId);
+      const settings = {
+        whatsappTemplates: templates,
+        event_code: EVENT_CODE,
+      };
+      const url = buildMailtoUsingSettings(lead, settings);
+      if (url) {
+        window.open(url, '_self');
+      } else {
+        throw new Error('No se pudo construir el enlace de correo.');
+      }
+    } catch (err: any) {
+      console.error("Error creating email:", err);
+      alert(`No se pudo crear el correo: ${err.message}`);
+    } finally {
+      setSendingAction(null);
+    }
+  };
+
+
   const selectedMaterial = materials.find(m => m.id === materialId);
 
   async function shareViaWA() {
@@ -243,7 +270,10 @@ Best regards,`);
                 <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={onSendBuilderBot} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Send via BuilderBot"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'builderbot' ? '':'hidden'}`} /><Bot className={`w-5 h-5 ${sendingAction === 'builderbot' ? 'hidden':''}`} /> BuilderBot</button>
                     <button type="button" onClick={handleOpenWhatsApp} disabled={!hasPhone || !!sendingAction} title={!hasPhone ? "No phone on record" : "Open WhatsApp"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"><LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'wa' ? '':'hidden'}`} /><MessageSquare className={`w-5 h-5 ${sendingAction === 'wa' ? 'hidden':''}`} /> WhatsApp</button>
-                    <a href={`mailto:${lead.email || ''}`} target="_blank" rel="noreferrer" title={!hasEmail ? "No email on record" : "Send Email"} className={`h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-blue-600 text-white hover:bg-blue-700 ${!hasEmail ? 'opacity-60 cursor-not-allowed' : ''} focus:outline-none focus:ring-2 focus:ring-blue-400`}><Mail className="w-5 h-5" /> Email</a>
+                    <button type="button" onClick={handleEmailClick} disabled={!hasEmail || !!sendingAction} title={!hasEmail ? "No email on record" : "Send Email"} className="h-11 flex-1 inline-flex items-center justify-center gap-2 px-4 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400">
+                        <LoaderCircle className={`w-5 h-5 animate-spin ${sendingAction === 'email' ? '' : 'hidden'}`} />
+                        <Mail className={`w-5 h-5 ${sendingAction === 'email' ? 'hidden' : ''}`} /> Email
+                    </button>
                 </div>
               </div>
                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
