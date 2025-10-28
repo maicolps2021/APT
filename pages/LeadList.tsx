@@ -1,5 +1,3 @@
-
-
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { collection, doc, updateDoc, query, where, orderBy, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
 import { createPortal } from 'react-dom';
@@ -65,6 +63,9 @@ const NEXT_STEP_META: Record<string, { icon: React.ComponentType<any>; label: st
   WhatsApp: { icon: MessageSquare, label: 'WhatsApp Follow-up' },
 };
 
+// Define a clear type for sort order to improve readability.
+type SortOrder = 'NEWEST' | 'OLDEST';
+
 const LeadList: React.FC = () => {
   const { status: authStatus } = useAuth();
   const [allLeads, setAllLeads] = useState<AnyLead[]>([]);
@@ -78,7 +79,8 @@ const LeadList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>(() => localStorage.getItem('lead_filter_status') || 'ALL');
   const [nextStepFilter, setNextStepFilter] = useState<string>(() => localStorage.getItem('lead_filter_step') || 'ALL');
   const [channelFilter, setChannelFilter] = useState<string>(() => localStorage.getItem('lead_filter_channel') || 'ALL');
-  const [orderBy, setOrderBy] = useState<'NEWEST' | 'OLDEST'>(() => (localStorage.getItem('lead_order_by') as any) || 'NEWEST');
+  // FIX: Renamed 'orderBy' to 'sortOrder' to avoid conflict with the 'orderBy' function imported from Firestore.
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => (localStorage.getItem('lead_order_by') as SortOrder) || 'NEWEST');
 
   // Menú de siguiente paso
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -90,7 +92,8 @@ const LeadList: React.FC = () => {
   useEffect(() => { localStorage.setItem('lead_filter_status', statusFilter); }, [statusFilter]);
   useEffect(() => { localStorage.setItem('lead_filter_step', nextStepFilter); }, [nextStepFilter]);
   useEffect(() => { localStorage.setItem('lead_filter_channel', channelFilter); }, [channelFilter]);
-  useEffect(() => { localStorage.setItem('lead_order_by', orderBy); }, [orderBy]);
+  // FIX: Updated the dependency and key for persisting the sort order.
+  useEffect(() => { localStorage.setItem('lead_order_by', sortOrder); }, [sortOrder]);
 
   const fetchAllLeads = useCallback(async () => {
     setLoading(true);
@@ -147,12 +150,14 @@ const LeadList: React.FC = () => {
       d: asDate(l.created_at) || new Date(0)
     }));
     
-    withDate.sort((a, b) => orderBy === 'NEWEST'
+    // FIX: Use the 'sortOrder' state variable in an explicit comparator to sort the leads correctly. This resolves the TypeScript error where the state variable was being treated as a function due to a name collision.
+    withDate.sort((a, b) => sortOrder === 'NEWEST'
       ? b.d.getTime() - a.d.getTime()
       : a.d.getTime() - b.d.getTime());
 
     return withDate.map(x => x.l);
-  }, [allLeads, q, statusFilter, nextStepFilter, channelFilter, orderBy]);
+    // FIX: Updated the dependency array to use the renamed 'sortOrder' state.
+  }, [allLeads, q, statusFilter, nextStepFilter, channelFilter, sortOrder]);
 
   const handleUpdateLeadState = (id: string, patch: Partial<Lead>) => {
     setAllLeads(ls => ls.map(l => l.id === id ? { ...l, ...patch } : l));
@@ -427,7 +432,8 @@ const LeadList: React.FC = () => {
             <option value="QR">QR</option>
             <option value="MANUAL">MANUAL</option>
           </select>
-          <select value={orderBy} onChange={e => setOrderBy(e.target.value as any)} className="input col-span-2 lg:col-span-1">
+          {/* FIX: The value and onChange handler now correctly reference 'sortOrder' and 'setSortOrder'. */}
+          <select value={sortOrder} onChange={e => setSortOrder(e.target.value as SortOrder)} className="input col-span-2 lg:col-span-1">
             <option value="NEWEST">Newest first</option>
             <option value="OLDEST">Oldest first</option>
           </select>
