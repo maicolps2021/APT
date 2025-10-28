@@ -1,6 +1,7 @@
 
+
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { collection, doc, updateDoc, query, where, orderBy, limit, startAfter, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
+import { collection, doc, updateDoc, query, where, orderBy, getDocs, Timestamp, deleteDoc } from 'firebase/firestore';
 import { createPortal } from 'react-dom';
 import { db } from '../lib/supabaseClient';
 import { EVENT_CODE, WHATSAPP } from '../lib/config';
@@ -11,8 +12,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { sendWhatsAppVia } from '../services/messaging';
 import { getResolvedWhatsAppText } from '../lib/templates';
 import { Mail, MessageSquare, CheckCircle2, MoreVertical, Calendar, Phone, Send, Plane, Clock, LoaderCircle, Search, UserPlus, Trash2, Bot } from 'lucide-react';
-import { LeadCategory, LEAD_CATEGORY_LABELS } from '../types';
+import { LEAD_CATEGORY_LABELS } from '../types';
 import { LEAD_CATEGORY_ORDER } from '../lib/categoryMap';
+import { inferStatusFromLead } from '../lib/status';
 
 // Acepta Firestore Timestamp, string ISO/fecha, number (ms), o null/undefined.
 function asDate(x: any): Date | null {
@@ -65,75 +67,41 @@ const NEXT_STEP_META: Record<string, { icon: React.ComponentType<any>; label: st
 
 const LeadList: React.FC = () => {
   const { status: authStatus } = useAuth();
-  const [leads, setLeads] = useState<AnyLead[]>([]);
+  const [allLeads, setAllLeads] = useState<AnyLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [sendingMessage, setSendingMessage] = useState<Record<string, boolean>>({});
 
-
   // Filtros persistentes
-  const [filterStatus, setFilterStatus] = useState<string>(() => localStorage.getItem('lead_filter_status') || '');
-  const [filterStep, setFilterStep] = useState<string>(() => localStorage.getItem('lead_filter_step') || '');
-  const [filterChannel, setFilterChannel] = useState<string>(() => localStorage.getItem('lead_filter_channel') || '');
-  const [search, setSearch] = useState<string>(() => localStorage.getItem('lead_search') || '');
-  
-  // Paginación
-  const PAGE_SIZE = 100;
-  const [loadingPage, setLoadingPage] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const lastDocRef = useRef<any | null>(null);
+  const [q, setQ] = useState(() => localStorage.getItem('lead_search') || '');
+  const [statusFilter, setStatusFilter] = useState<string>(() => localStorage.getItem('lead_filter_status') || 'ALL');
+  const [nextStepFilter, setNextStepFilter] = useState<string>(() => localStorage.getItem('lead_filter_step') || 'ALL');
+  const [channelFilter, setChannelFilter] = useState<string>(() => localStorage.getItem('lead_filter_channel') || 'ALL');
+  const [orderBy, setOrderBy] = useState<'NEWEST' | 'OLDEST'>(() => (localStorage.getItem('lead_order_by') as any) || 'NEWEST');
 
   // Menú de siguiente paso
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   type MenuPos = { x: number; y: number } | null;
   const [menuPos, setMenuPos] = useState<MenuPos>(null);
 
-
   // Persistir filtros en localStorage
-  useEffect(() => { localStorage.setItem('lead_filter_status', filterStatus); }, [filterStatus]);
-  useEffect(() => { localStorage.setItem('lead_filter_step', filterStep); }, [filterStep]);
-  useEffect(() => { localStorage.setItem('lead_filter_channel', filterChannel); }, [filterChannel]);
-  useEffect(() => { localStorage.setItem('lead_search', search); }, [search]);
-  
-  const availableChannels = LEAD_CATEGORY_ORDER;
+  useEffect(() => { localStorage.setItem('lead_search', q); }, [q]);
+  useEffect(() => { localStorage.setItem('lead_filter_status', statusFilter); }, [statusFilter]);
+  useEffect(() => { localStorage.setItem('lead_filter_step', nextStepFilter); }, [nextStepFilter]);
+  useEffect(() => { localStorage.setItem('lead_filter_channel', channelFilter); }, [channelFilter]);
+  useEffect(() => { localStorage.setItem('lead_order_by', orderBy); }, [orderBy]);
 
-  const fetchLeads = useCallback(async (isInitial = false) => {
-    if (loadingPage) return;
-    
-    if (isInitial) {
-      setLoading(true);
-      lastDocRef.current = null;
-    } else {
-      setLoadingPage(true);
-    }
+  const fetchAllLeads = useCallback(async () => {
+    setLoading(true);
     setError(null);
-
     try {
       const queryConstraints: any[] = [
         where('event_code', '==', EVENT_CODE),
         orderBy('created_at', 'desc'),
-        limit(PAGE_SIZE)
       ];
 
-      // Apply server-side filters
-      if (filterStatus) {
-        queryConstraints.push(where('status', '==', filterStatus));
-      }
-      if (filterStep) {
-        queryConstraints.push(where('next_step', '==', filterStep));
-      }
-      if (filterChannel) {
-        // Use 'role' as the channel field for filtering
-        queryConstraints.push(where('role', '==', filterChannel));
-      }
-
       let q = query(collection(db, 'leads'), ...queryConstraints);
-
-      if (!isInitial && lastDocRef.current) {
-        q = query(q, startAfter(lastDocRef.current));
-      }
-
       const snap = await getDocs(q);
       const newLeads = snap.docs.map(d => {
         const data = d.data();
@@ -142,61 +110,63 @@ const LeadList: React.FC = () => {
         return { id: d.id, ...data, created_at: createdAt } as AnyLead;
       });
       
-      setLeads(prev => isInitial ? newLeads : [...prev, ...newLeads]);
-      lastDocRef.current = snap.docs[snap.docs.length - 1] || null;
-      setHasMore(snap.docs.length === PAGE_SIZE);
-
+      setAllLeads(newLeads);
     } catch (err: any) {
       console.error("Error fetching leads:", err);
       setError("Failed to load leads. Please check connection and Firestore rules.");
     } finally {
       setLoading(false);
-      setLoadingPage(false);
     }
-  }, [filterStatus, filterStep, filterChannel]);
+  }, []);
 
-  // Recargar cuando cambian los filtros
   useEffect(() => {
     if (authStatus === 'authenticated') {
-      fetchLeads(true);
+      fetchAllLeads();
     }
-  }, [authStatus, fetchLeads, filterStatus, filterStep, filterChannel]);
+  }, [authStatus, fetchAllLeads]);
 
-  const filteredLeads = useMemo(() => {
-    const txt = search.trim().toLowerCase();
-    
-    const baseList = txt 
-        ? leads.filter(l => 
-            (l.name || '').toLowerCase().includes(txt) || 
-            (l.company || '').toLowerCase().includes(txt) || 
-            (l.email || '').toLowerCase().includes(txt)
-          )
-        : leads;
-        
-    return baseList.sort((a, b) => {
-        const da = asDate(a.created_at);
-        const db = asDate(b.created_at);
-        const ta = isValidDate(da) ? da.getTime() : 0;
-        const tb = isValidDate(db) ? db.getTime() : 0;
-        return tb - ta; // desc
+  const leads = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+
+    const filtered = (allLeads || []).filter(l => {
+      const inferredStatus = inferStatusFromLead(l);
+      const passStatus = statusFilter === 'ALL' ? true : inferredStatus === statusFilter;
+      
+      const passNextStep = nextStepFilter === 'ALL' ? true : (l.next_step || '') === nextStepFilter;
+
+      const passChannel = channelFilter === 'ALL' ? true : (l.source || '').toUpperCase() === channelFilter.toUpperCase();
+
+      const haystack = [l.name, l.company, l.email, l.phone_e164, l.phone_raw].filter(Boolean).join(' ').toLowerCase();
+      const passText = needle === '' ? true : haystack.includes(needle);
+
+      return passStatus && passNextStep && passChannel && passText;
     });
 
-  }, [leads, search]);
+    const withDate = filtered.map(l => ({
+      l,
+      d: asDate(l.created_at) || new Date(0)
+    }));
+    
+    withDate.sort((a, b) => orderBy === 'NEWEST'
+      ? b.d.getTime() - a.d.getTime()
+      : a.d.getTime() - b.d.getTime());
+
+    return withDate.map(x => x.l);
+  }, [allLeads, q, statusFilter, nextStepFilter, channelFilter, orderBy]);
 
   const handleUpdateLeadState = (id: string, patch: Partial<Lead>) => {
-    setLeads(ls => ls.map(l => l.id === id ? { ...l, ...patch } : l));
+    setAllLeads(ls => ls.map(l => l.id === id ? { ...l, ...patch } : l));
   };
 
   const handleDeleteLead = async (leadId: string) => {
     if (!window.confirm('¿Eliminar este lead definitivamente?')) return;
-    // Optimista: quita de UI primero
-    setLeads(ls => ls.filter(l => l.id !== leadId));
+    setAllLeads(ls => ls.filter(l => l.id !== leadId));
     try {
       await deleteDoc(doc(db, 'leads', leadId));
     } catch (err) {
       console.error(err);
       alert('No se pudo eliminar. Recargando la lista.');
-      // (opcional) recarga o reinyecta si quieres deshacer la optimista
+      fetchAllLeads();
     } finally {
       setOpenMenuId(null);
       setMenuPos(null);
@@ -328,12 +298,12 @@ const LeadList: React.FC = () => {
   );
 
   const renderContent = () => {
-    if (loading) return <div className="text-center p-8">Loading leads...</div>;
+    if (loading) return <div className="text-center p-8"><LoaderCircle className="animate-spin inline-block mr-2" /> Loading leads...</div>;
     if (error) return <div className="text-center p-4 bg-red-100 dark:bg-red-900/50 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300">{error}</div>;
-    if (leads.length === 0 && !loading) {
+    if (allLeads.length === 0) {
       return (
         <div className="text-center py-16">
-          <p className="text-gray-500 dark:text-gray-400">No leads match the current filters.</p>
+          <p className="text-gray-500 dark:text-gray-400">No leads captured yet.</p>
           <a href="#/capture" className="mt-4 inline-flex items-center justify-center rounded-lg px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors">
             <UserPlus className="mr-2 h-4 w-4" />
             Capture First Lead
@@ -341,11 +311,18 @@ const LeadList: React.FC = () => {
         </div>
       );
     }
+     if (leads.length === 0) {
+        return (
+            <div className="text-center py-16">
+                <p className="text-gray-500 dark:text-gray-400">No leads match the current filters.</p>
+            </div>
+        );
+    }
     return (
       <>
         {/* Mobile View */}
         <div className="md:hidden space-y-3">
-          {filteredLeads.map(lead => {
+          {leads.map(lead => {
             const createdAt = asDate(lead.created_at);
             return (
                 <div key={lead.id} onClick={() => setSelectedLead(lead)} className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 bg-white dark:bg-gray-900 space-y-3">
@@ -354,7 +331,7 @@ const LeadList: React.FC = () => {
                     <div className="text-base font-semibold">{lead.name || '—'}</div>
                     <div className="text-sm opacity-70">{lead.company || '—'}</div>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700`}>{lead.status || 'NEW'}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700`}>{inferStatusFromLead(lead)}</span>
                 </div>
                 <div className="text-sm opacity-80">
                     <div>{lead.email || '—'}</div>
@@ -385,13 +362,13 @@ const LeadList: React.FC = () => {
               <tr>
                 <th className="th">Name</th>
                 <th className="th">Contact</th>
-                <th className="th">Scoring</th>
+                <th className="th">Status</th>
                 <th className="th">Next Step</th>
                 <th className="th">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-              {filteredLeads.map(lead => (
+              {leads.map(lead => (
                 <tr key={lead.id} onClick={() => setSelectedLead(lead)} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer">
                   <td className="px-6 py-4 whitespace-nowrap">
                       <div className="font-medium text-gray-900 dark:text-white">{lead.name}</div>
@@ -401,7 +378,7 @@ const LeadList: React.FC = () => {
                     {resolveLeadPhone(lead) && <div>WA: {resolveLeadPhone(lead)}</div>}
                     {lead.email && <div>{lead.email}</div>}
                   </td>
-                  <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded-full text-xs font-medium`}>{lead.scoring || 'N/A'}</span></td>
+                  <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded-full text-xs font-medium`}>{inferStatusFromLead(lead)}</span></td>
                   <td className="px-6 py-4">
                      {lead.next_step ? (()=> {
                        const meta = NEXT_STEP_META[lead.next_step] || {icon: Clock, label: lead.next_step};
@@ -414,14 +391,6 @@ const LeadList: React.FC = () => {
             </tbody>
           </table>
         </div>
-
-        {hasMore && !loading && (
-          <div className="flex justify-center my-4">
-            <button onClick={() => fetchLeads(false)} disabled={loadingPage} className="px-4 py-2 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60">
-              {loadingPage ? (<><LoaderCircle className="w-4 h-4 animate-spin mr-2 inline" />Loading…</>) : 'Load More'}
-            </button>
-          </div>
-        )}
       </>
     );
   };
@@ -439,23 +408,28 @@ const LeadList: React.FC = () => {
         </div>
       </div>
       <Card>
-        <div className="flex flex-wrap gap-2 items-center justify-between mb-4 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-          <div className="relative flex-grow">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 mb-4 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+          <div className="relative sm:col-span-2 md:col-span-3 lg:col-span-5">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400"/>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, company, email..."
-              className="w-full pl-10 rounded-lg border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2" />
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search name, company, email..."
+              className="w-full pl-10 input" />
           </div>
-          <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="input flex-shrink-0">
-            <option value="">All status</option>
-            <option>NEW</option><option>CONTACTED</option><option>PROPOSED</option><option>WON</option><option>LOST</option>
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} className="input">
+            <option value="ALL">All status</option>
+            <option value="NEW">NEW</option><option value="CONTACTED">CONTACTED</option><option value="PROPOSED">PROPOSED</option><option value="WON">WON</option><option value="LOST">LOST</option>
           </select>
-          <select value={filterStep} onChange={e=>setFilterStep(e.target.value)} className="input flex-shrink-0">
-            <option value="">All next steps</option>
+          <select value={nextStepFilter} onChange={e=>setNextStepFilter(e.target.value)} className="input">
+            <option value="ALL">All next steps</option>
             {Object.entries(NEXT_STEP_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
           </select>
-          <select value={filterChannel} onChange={e=>setFilterChannel(e.target.value)} className="input flex-shrink-0">
-            <option value="">All channels</option>
-            {availableChannels.map(c => <option key={c} value={c}>{LEAD_CATEGORY_LABELS[c]}</option>)}
+          <select value={channelFilter} onChange={e => setChannelFilter(e.target.value)} className="input">
+            <option value="ALL">All channels</option>
+            <option value="QR">QR</option>
+            <option value="MANUAL">MANUAL</option>
+          </select>
+          <select value={orderBy} onChange={e => setOrderBy(e.target.value as any)} className="input col-span-2 lg:col-span-1">
+            <option value="NEWEST">Newest first</option>
+            <option value="OLDEST">Oldest first</option>
           </select>
         </div>
         {renderContent()}

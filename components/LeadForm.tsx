@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, FormEvent, useMemo, useRef } from 'react';
 import { ORG_UUID, EVENT_CODE } from '../lib/config';
 import type { Lead } from '../types';
@@ -72,6 +73,7 @@ export const LeadForm: React.FC<LeadFormProps> = ({ onSuccess, onReset, successL
       phone_raw: formData.whatsapp || '',
       phone_e164: norm?.e164 || '',
       phone_local: norm?.local || '',
+      status: 'NEW' as const,
     };
 
     try {
