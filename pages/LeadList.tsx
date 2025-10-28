@@ -1,72 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../lib/supabaseClient';
-import { collection, query, onSnapshot, orderBy, where, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, startAfter, getCountFromServer, QueryDocumentSnapshot, DocumentData, doc, getDoc } from 'firebase/firestore';
 import { ORG_UUID, EVENT_CODE } from '../lib/config';
-import type { Lead } from '../types';
+import type { Lead, LeadCategory } from '../types';
+import { LEAD_CATEGORY_LABELS } from '../types';
+import Card from '../components/Card';
 import LeadDetailModal from '../components/LeadDetailModal';
-import { Search, LoaderCircle } from 'lucide-react';
+import { LoaderCircle, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { exportLeadsCsv } from '../lib/export';
-import { inferStatusFromLead, LeadStatus } from '../lib/status';
 
-// --- Tipos para filtros y ordenación ---
-type StatusFilter = 'ALL' | LeadStatus;
-type NextStepFilter = 'ALL' | 'Condiciones' | 'Reunion' | 'Llamada15' | 'FamTrip' | 'WhatsApp';
-type ChannelFilter = 'ALL' | 'QR' | 'MANUAL';
-type SortOrder = 'NEWEST' | 'OLDEST';
-type CategoryFilter =
-  | 'ALL'
-  | 'Tourop'
-  | 'Hoteles'
-  | 'Transportistas'
-  | 'Parques'
-  | 'Guías'
-  | 'Souvenirs y restaurantes'
-  | 'UNSET';
-const PAGE_SIZES = [25, 50, 100, -1] as const;
-type PageSize = typeof PAGE_SIZES[number];
-
-// --- Helpers de normalización ---
-function norm(s: any): string {
-  return (s ?? '')
-    .toString()
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '');
-}
-
-function mapToCategory(lead: any): CategoryFilter {
-  const raw = norm(lead?.category || lead?.role || '');
-  if (!raw) return 'UNSET';
-  if (/(tour.?oper|operador|agency|agencia)/.test(raw)) return 'Tourop';
-  if (/hotel/.test(raw)) return 'Hoteles';
-  if (/(transport|shuttle|bus|coaster|hiace)/.test(raw)) return 'Transportistas';
-  if (/(parque|park|attraction|atraccion|puentes|hanging|waterfall)/.test(raw)) return 'Parques';
-  if (/(guia|guide)/.test(raw)) return 'Guías';
-  if (/(souvenir|gift|restaurant|restaurante|cafe|comida)/.test(raw)) return 'Souvenirs y restaurantes';
-  return 'UNSET';
-}
-
-function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [state, setState] = useState<T>(() => {
-    try {
-      const storedValue = localStorage.getItem(key);
-      return storedValue ? JSON.parse(storedValue) : defaultValue;
-    } catch {
-      return defaultValue;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(state));
-    } catch (e) {
-      console.error(`Could not save state for key "${key}" to localStorage.`, e);
-    }
-  }, [key, state]);
-
-  return [state, setState];
-}
+const PAGE_SIZE = 25;
 
 const LeadList: React.FC = () => {
     const [leads, setLeads] = useState<Lead[]>([]);
@@ -74,234 +17,297 @@ const LeadList: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
-    // --- Estados de filtros y paginación ---
-    const [q, setQ] = usePersistentState('leadlist_q', '');
-    const [statusFilter, setStatusFilter] = usePersistentState<StatusFilter>('leadlist_status', 'ALL');
-    const [nextStepFilter, setNextStepFilter] = usePersistentState<NextStepFilter>('leadlist_nextstep', 'ALL');
-    const [channelFilter, setChannelFilter] = usePersistentState<ChannelFilter>('leadlist_channel', 'ALL');
-    const [categoryFilter, setCategoryFilter] = usePersistentState<CategoryFilter>('leadlist_category', 'ALL');
-    const [sortOrder, setSortOrder] = usePersistentState<SortOrder>('leadlist_sort', 'NEWEST');
-    const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = usePersistentState<PageSize>('leadlist_pagesize', 25);
+    // Filtering and Searching
+    const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState<LeadCategory | ''>('');
 
+    // Pagination
+    const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+    const [firstVisible, setFirstVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+    const [page, setPage] = useState(1);
+    const [totalLeads, setTotalLeads] = useState(0);
+
+    // Debounce search input
     useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+            setPage(1);
+            setLastVisible(null);
+            setFirstVisible(null);
+        }, 500);
+        return () => clearTimeout(handler);
+    }, [searchTerm]);
+
+    const fetchLeads = useCallback(async (direction: 'next' | 'prev' | 'first' = 'first') => {
         setLoading(true);
+        setError(null);
+
         try {
             const leadsRef = collection(db, 'leads');
-            const q = query(
-                leadsRef,
+            
+            // Base constraints
+            let baseConstraints = [
                 where('org_id', '==', ORG_UUID),
                 where('event_code', '==', EVENT_CODE),
-                orderBy('created_at', 'desc')
-            );
+            ];
+            
+            if (statusFilter) {
+                baseConstraints.push(where('status', '==', statusFilter));
+            }
+            if (categoryFilter) {
+                baseConstraints.push(where('role', '==', categoryFilter));
+            }
+            
+            const countQuery = query(leadsRef, ...baseConstraints);
+            const countSnapshot = await getCountFromServer(countQuery);
+            setTotalLeads(countSnapshot.data().count);
+            
+            let dataQuery = query(leadsRef, ...baseConstraints, orderBy('created_at', 'desc'), limit(PAGE_SIZE));
 
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const leadsData = snapshot.docs.map(doc => {
-                    const data = doc.data();
-                    const createdAt = data.created_at;
-                    const meetingAt = data.meeting_at;
+            if (direction === 'next' && lastVisible) {
+                dataQuery = query(leadsRef, ...baseConstraints, orderBy('created_at', 'desc'), startAfter(lastVisible), limit(PAGE_SIZE));
+            } else if (direction === 'prev' && firstVisible) {
+                // Simplified "previous" logic by resetting to page 1
+                setPage(1);
+            }
+            
+            const documentSnapshots = await getDocs(dataQuery);
 
-                    return {
-                        id: doc.id,
-                        ...data,
-                        created_at: createdAt?.toDate ? createdAt.toDate().toISOString() : String(createdAt || ''),
-                        meeting_at: meetingAt?.toDate ? meetingAt.toDate().toISOString() : String(meetingAt || ''),
-                    } as Lead;
-                });
-                setLeads(leadsData);
-                setLoading(false);
-            }, (err) => {
-                console.error("Error fetching leads:", err);
-                setError("Could not load leads. Please check permissions and network.");
-                setLoading(false);
+            let fetchedLeads = documentSnapshots.docs.map(doc => {
+                 const data = doc.data();
+                 const createdAt = data.created_at?.toDate ? data.created_at.toDate().toISOString() : data.created_at;
+                 return { id: doc.id, ...data, created_at: createdAt } as Lead;
             });
 
-            return () => unsubscribe();
-        } catch (err) {
-            console.error("Query setup error:", err);
-            setError("Failed to set up lead query.");
+            if (debouncedSearchTerm) {
+                const lowercasedFilter = debouncedSearchTerm.toLowerCase();
+                fetchedLeads = fetchedLeads.filter(
+                    lead =>
+                        lead.name.toLowerCase().includes(lowercasedFilter) ||
+                        lead.company?.toLowerCase().includes(lowercasedFilter) ||
+                        lead.email?.toLowerCase().includes(lowercasedFilter)
+                );
+            }
+
+            setLeads(fetchedLeads);
+            setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1] || null);
+            setFirstVisible(documentSnapshots.docs[0] || null);
+        } catch (err: any) {
+            console.error("Error fetching leads:", err);
+            setError("Could not load leads. Please check permissions and database configuration.");
+        } finally {
             setLoading(false);
         }
-    }, []);
-
-    const leadsFilteredAndSorted = useMemo(() => {
-        const needle = q.trim().toLowerCase();
-        
-        const filtered = leads.filter(l => {
-            const passStatus = statusFilter === 'ALL' ? true : inferStatusFromLead(l) === statusFilter;
-            const passNextStep = nextStepFilter === 'ALL' ? true : (l.next_step || '') === nextStepFilter;
-            const passChannel = channelFilter === 'ALL' ? true : (l.source || '') === channelFilter;
-            const passCategory = categoryFilter === 'ALL' ? true : mapToCategory(l) === categoryFilter;
-            const haystack = [l.name, l.company, l.email, l.phone_raw].filter(Boolean).join(' ').toLowerCase();
-            const passText = needle === '' ? true : haystack.includes(needle);
-            return passStatus && passNextStep && passChannel && passCategory && passText;
-        });
-
-        const withDate = filtered.map(l => ({ l, d: l.created_at ? new Date(l.created_at) : new Date(0) }));
-        const comparator = sortOrder === 'NEWEST'
-          ? (a: {d: Date}, b: {d: Date}) => b.d.getTime() - a.d.getTime()
-          : (a: {d: Date}, b: {d: Date}) => a.d.getTime() - b.d.getTime();
-        withDate.sort(comparator);
-
-        return withDate.map(x => x.l);
-    }, [leads, q, statusFilter, nextStepFilter, channelFilter, categoryFilter, sortOrder]);
-
-    const total = leadsFilteredAndSorted.length;
-    const pageCount = pageSize === -1 ? 1 : Math.max(1, Math.ceil(total / pageSize));
-
-    useEffect(() => { setPage(1); }, [q, statusFilter, nextStepFilter, channelFilter, categoryFilter, sortOrder, pageSize]);
+    }, [statusFilter, categoryFilter, debouncedSearchTerm, lastVisible, firstVisible]);
     
     useEffect(() => {
-        if (page > pageCount) setPage(pageCount);
-    }, [page, pageCount]);
+        fetchLeads('first');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [statusFilter, categoryFilter, debouncedSearchTerm]);
 
-    const pagedLeads = useMemo(() => {
-        if (pageSize === -1) return leadsFilteredAndSorted;
-        const start = (page - 1) * pageSize;
-        return leadsFilteredAndSorted.slice(start, start + pageSize);
-    }, [leadsFilteredAndSorted, page, pageSize]);
-
-    const range = useMemo(() => {
-        if (total === 0) return { from: 0, to: 0, total: 0 };
-        if (pageSize === -1) return { from: 1, to: total, total };
-        const from = (page - 1) * pageSize + 1;
-        const to = Math.min(page * pageSize, total);
-        return { from, to, total };
-    }, [total, page, pageSize]);
-
-    const handleRowClick = (lead: Lead) => setSelectedLead(lead);
-    const handleCloseModal = () => setSelectedLead(null);
-    function goTo(p: number) { setPage(Math.min(Math.max(1, p), pageCount)); }
-
-    const handleStatusChange = async (leadId: string, newStatus: Lead['status']) => {
-        const leadRef = doc(db, 'leads', leadId);
-        try {
-            setLeads(prevLeads => prevLeads.map(l => l.id === leadId ? {...l, status: newStatus} : l));
-            await updateDoc(leadRef, { status: newStatus, updated_at: Timestamp.now() });
-        } catch (error) {
-            console.error("Error updating status:", error);
-            alert("Failed to update status.");
+    const handleNextPage = () => {
+        if (lastVisible) {
+            setPage(p => p + 1);
+            fetchLeads('next');
         }
     };
     
-    const scoringColors: Record<string, string> = {
-        A: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
-        B: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300',
-        C: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+    const handlePrevPage = () => {
+        if (page > 1) {
+            // This is a simplified implementation for previous page.
+            // A full implementation would require reversing the query order and using endBefore.
+            setPage(1);
+            setLastVisible(null);
+            setFirstVisible(null);
+            fetchLeads('first');
+        }
     };
 
-    const compactPageNumbers = useMemo(() => {
-        if (pageCount <= 7) return Array.from({ length: pageCount }, (_, i) => i + 1);
-        const pages: (number | string)[] = [1];
-        if (page > 3) pages.push('...');
-        for (let i = Math.max(2, page - 1); i <= Math.min(pageCount - 1, page + 1); i++) pages.push(i);
-        if (page < pageCount - 2) pages.push('...');
-        pages.push(pageCount);
-        return [...new Set(pages)];
-    }, [page, pageCount]);
+    const handleRowClick = (lead: Lead) => {
+        setSelectedLead(lead);
+    };
 
+    const handleCloseModal = () => {
+        const currentLeadId = selectedLead?.id;
+        setSelectedLead(null);
+        
+        if (!currentLeadId) {
+            fetchLeads('first');
+            return;
+        }
+        
+        // Optimistically update just the one row if we can find it
+        const leadRef = doc(db, 'leads', currentLeadId);
+        getDoc(leadRef).then(docSnap => {
+            if (docSnap.exists()) {
+                const updatedData = docSnap.data();
+                const createdAt = updatedData.created_at?.toDate ? updatedData.created_at.toDate().toISOString() : updatedData.created_at;
+                const updatedLead = { id: docSnap.id, ...updatedData, created_at: createdAt } as Lead;
+                setLeads(currentLeads => currentLeads.map(l => l.id === updatedLead.id ? updatedLead : l));
+            } else {
+                fetchLeads('first'); // Fallback to full refresh
+            }
+        }).catch(() => fetchLeads('first'));
+    };
+    
+    const handleExport = async () => {
+      setLoading(true);
+      try {
+        const leadsRef = collection(db, 'leads');
+        let constraints: any[] = [ // Use any[] to allow conditional pushes
+          where('org_id', '==', ORG_UUID),
+          where('event_code', '==', EVENT_CODE),
+          orderBy('created_at', 'desc'),
+        ];
+        if (statusFilter) constraints.push(where('status', '==', statusFilter));
+        if (categoryFilter) constraints.push(where('role', '==', categoryFilter));
+
+        const q = query(leadsRef, ...constraints);
+        const snapshot = await getDocs(q);
+        const allLeads = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lead));
+        
+        const leadsToExport = debouncedSearchTerm
+            ? allLeads.filter(lead =>
+                lead.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+                lead.company?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+            )
+            : allLeads;
+        
+        exportLeadsCsv(leadsToExport);
+      } catch (err) {
+        console.error("Export failed:", err);
+        setError("Could not export leads.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const leadStatuses: (Lead['status'])[] = ['NEW', 'CONTACTED', 'PROPOSED', 'WON', 'LOST'];
+    const leadCategories = Object.keys(LEAD_CATEGORY_LABELS) as LeadCategory[];
 
     return (
         <div className="mx-auto max-w-7xl">
             <div className="flex flex-col md:flex-row justify-between items-center mb-6">
                 <div className="text-center md:text-left">
                     <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">Lead List</h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-2">All captured leads in real-time ({leads.length} total).</p>
+                    <p className="text-gray-500 dark:text-gray-400 mt-2">View and manage all captured event leads.</p>
                 </div>
-                 <div className="flex items-center gap-2 mt-4 md:mt-0">
-                    <button
-                        onClick={() => exportLeadsCsv(leadsFilteredAndSorted)}
-                        disabled={leadsFilteredAndSorted.length === 0}
-                        className="px-4 py-2 rounded-lg bg-gray-800 text-white dark:bg-gray-100 dark:text-black hover:opacity-90 font-semibold disabled:opacity-50"
-                    >
-                        Export CSV
-                    </button>
-                </div>
-            </div>
-
-            <div className="space-y-3 p-4 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm mb-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-                    <div className="relative xl:col-span-2">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                        <input type="text" placeholder="Buscar..." value={q} onChange={(e) => setQ(e.target.value)} className="input pl-10" />
-                    </div>
-                    <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as StatusFilter)} className="input"><option value="ALL">Todos los estados</option><option value="NEW">New</option><option value="CONTACTED">Contacted</option><option value="PROPOSED">Proposed</option><option value="WON">Won</option><option value="LOST">Lost</option></select>
-                    <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value as CategoryFilter)} className="input"><option value="ALL">Todas las categorías</option><option value="Tourop">TourOperador</option><option value="Hoteles">Hoteles</option><option value="Transportistas">Transportistas</option><option value="Parques">Parques</option><option value="Guías">Guías</option><option value="Souvenirs y restaurantes">Souvenirs y Restaurantes</option></select>
-                    <select value={nextStepFilter} onChange={e => setNextStepFilter(e.target.value as NextStepFilter)} className="input"><option value="ALL">Todos los sig. pasos</option><option value="Condiciones">Enviar Condiciones</option><option value="Reunion">Agendar Reunión</option><option value="Llamada15">Llamada 15min</option><option value="FamTrip">FamTrip</option><option value="WhatsApp">WhatsApp Follow-up</option></select>
-                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as SortOrder)} className="input"><option value="NEWEST">Más recientes</option><option value="OLDEST">Más antiguos</option></select>
-                </div>
-            </div>
-
-            <div className="overflow-x-auto bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm">
-                <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-                        <tr>
-                            <th scope="col" className="px-6 py-3">Lead</th>
-                            <th scope="col" className="px-6 py-3">Role</th>
-                            <th scope="col" className="px-6 py-3">Contact</th>
-                            <th scope="col" className="px-6 py-3">Scoring</th>
-                            <th scope="col" className="px-6 py-3">Status</th>
-                            <th scope="col" className="px-6 py-3">Captured</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {loading && (<tr><td colSpan={6} className="text-center p-8"><LoaderCircle className="h-6 w-6 animate-spin inline-block" /></td></tr>)}
-                        {error && (<tr><td colSpan={6} className="text-center p-8 text-red-500">{error}</td></tr>)}
-                        {!loading && pagedLeads.length === 0 && (
-                             <tr><td colSpan={6} className="text-center p-16 text-gray-500">
-                                {leads.length > 0 ? 'No hay leads que coincidan con los filtros.' : 'Aún no se han capturado leads.'}
-                            </td></tr>
-                        )}
-                        {!loading && pagedLeads.map(lead => (
-                            <tr key={lead.id} onClick={() => handleRowClick(lead)} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
-                                <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white"><div>{lead.name}</div><div className="text-xs text-gray-500">{lead.company || 'N/A'}</div></td>
-                                <td className="px-6 py-4">{mapToCategory(lead)}</td>
-                                <td className="px-6 py-4 text-xs">{lead.email && <div>{lead.email}</div>}{lead.phone_raw && <div>{lead.phone_raw}</div>}</td>
-                                <td className="px-6 py-4"><span className={`px-2 py-1 rounded-full text-xs font-medium ${scoringColors[lead.scoring || 'C'] || scoringColors['C']}`}>{lead.scoring || 'C'}</span></td>
-                                <td className="px-6 py-4"><select value={lead.status || 'NEW'} onChange={(e) => handleStatusChange(lead.id, e.target.value as Lead['status'])} onClick={(e) => e.stopPropagation()} className="input text-xs p-1 bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"><option value="NEW">New</option><option value="CONTACTED">Contacted</option><option value="PROPOSED">Proposed</option><option value="WON">Won</option><option value="LOST">Lost</option></select></td>
-                                <td className="px-6 py-4 text-xs">{lead.created_at ? new Date(lead.created_at).toLocaleString('es-CR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'N/A'}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                <button 
+                  onClick={handleExport}
+                  className="mt-4 md:mt-0 px-4 py-2 rounded-lg bg-gray-800 text-white dark:bg-gray-100 dark:text-black hover:opacity-90 font-semibold"
+                >
+                  Export CSV
+                </button>
             </div>
             
-            {total > 0 && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 text-sm text-gray-600 dark:text-gray-400">
-                    <div className="flex items-center gap-2">
-                        <select aria-label="Tamaño de página" className="input p-2 text-sm" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value) as PageSize)}>
-                            <option value={25}>25</option><option value={50}>50</option><option value={100}>100</option><option value={-1}>Todos</option>
-                        </select>
-                        <span>por página</span>
+            <Card>
+                <div className="flex flex-col md:flex-row gap-4 mb-4">
+                    <div className="relative flex-grow">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Search by name, company, or email..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="input pl-10 w-full"
+                        />
                     </div>
-                    <div>Mostrando {range.from}–{range.to} de {range.total}</div>
-                    <nav className="flex items-center gap-1" aria-label="Pagination">
-                        <button className="btn btn-sm" onClick={() => goTo(1)} disabled={page <= 1}>«</button>
-                        <button className="btn btn-sm" onClick={() => goTo(page - 1)} disabled={page <= 1}>‹</button>
-                        {compactPageNumbers.map((p, i) =>
-                            typeof p === 'string'
-                            ? <span key={`ellipsis-${i}`} className="px-2">...</span>
-                            : <button key={p} className={`btn btn-sm ${p === page ? 'btn-primary' : ''}`} onClick={() => goTo(p)}>{p}</button>
-                        )}
-                        <button className="btn btn-sm" onClick={() => goTo(page + 1)} disabled={page >= pageCount}>›</button>
-                        <button className="btn btn-sm" onClick={() => goTo(pageCount)} disabled={page >= pageCount}>»</button>
-                    </nav>
+                    <div className="flex gap-4">
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); setLastVisible(null); }}
+                            className="input"
+                        >
+                            <option value="">All Statuses</option>
+                            {leadStatuses.map(status => (
+                                <option key={status} value={status}>{status}</option>
+                            ))}
+                        </select>
+                         <select
+                            value={categoryFilter}
+                            onChange={(e) => { setCategoryFilter(e.target.value as LeadCategory | ''); setPage(1); setLastVisible(null); }}
+                            className="input"
+                        >
+                            <option value="">All Categories</option>
+                            {leadCategories.map(cat => (
+                                <option key={cat} value={cat}>{LEAD_CATEGORY_LABELS[cat]}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
-            )}
 
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                            <tr>
+                                <th scope="col" className="px-6 py-3">LEAD</th>
+                                <th scope="col" className="px-6 py-3">ROLE</th>
+                                <th scope="col" className="px-6 py-3">CONTACT</th>
+                                <th scope="col" className="px-6 py-3">SCORING</th>
+                                <th scope="col" className="px-6 py-3">STATUS</th>
+                                <th scope="col" className="px-6 py-3">NEXT STEP</th>
+                                <th scope="col" className="px-6 py-3">CAPTURED</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {loading ? (
+                                <tr><td colSpan={7} className="text-center p-8"><LoaderCircle className="animate-spin inline-block" /></td></tr>
+                            ) : error ? (
+                                <tr><td colSpan={7} className="text-center p-8 text-red-500">{error}</td></tr>
+                            ) : leads.length === 0 ? (
+                                <tr><td colSpan={7} className="text-center p-8">No leads found.</td></tr>
+                            ) : (
+                                leads.map(lead => (
+                                    <tr key={lead.id} onClick={() => handleRowClick(lead)} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer">
+                                        <td className="px-6 py-4">
+                                            <div className="font-medium text-gray-900 dark:text-white">{lead.name}</div>
+                                            <div className="text-sm text-gray-500 dark:text-gray-400">{lead.company}</div>
+                                        </td>
+                                        <td className="px-6 py-4">{lead.role ? LEAD_CATEGORY_LABELS[lead.role] : '—'}</td>
+                                        <td className="px-6 py-4">{lead.whatsapp || lead.email || '—'}</td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
+                                                lead.scoring === 'A' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                                lead.scoring === 'B' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
+                                                'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+                                            }`}>
+                                                {lead.scoring || 'C'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">{lead.status || 'NEW'}</td>
+                                        <td className="px-6 py-4">{lead.next_step || '—'}</td>
+                                        <td className="px-6 py-4">{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '—'}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div className="flex justify-between items-center pt-4">
+                    <span className="text-sm text-gray-700 dark:text-gray-400">
+                        Page {page} | Total: {totalLeads}
+                    </span>
+                    <div className="inline-flex mt-2 xs:mt-0">
+                        <button onClick={handlePrevPage} disabled={page === 1} className="flex items-center justify-center px-4 h-10 text-base font-medium text-white bg-gray-800 rounded-l hover:bg-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white disabled:opacity-50">
+                            <ChevronLeft className="w-5 h-5 mr-2" /> Prev
+                        </button>
+                        <button onClick={handleNextPage} disabled={!lastVisible || leads.length < PAGE_SIZE} className="flex items-center justify-center px-4 h-10 text-base font-medium text-white bg-gray-800 border-0 border-l border-gray-700 rounded-r hover:bg-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white disabled:opacity-50">
+                            Next <ChevronRight className="w-5 h-5 ml-2" />
+                        </button>
+                    </div>
+                </div>
+            </Card>
 
             {selectedLead && (
                 <LeadDetailModal
-                    lead={selectedLead}
                     isOpen={!!selectedLead}
                     onClose={handleCloseModal}
+                    lead={selectedLead}
                 />
             )}
-             <style>{`
-                .btn { @apply px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed; }
-                .btn-sm { @apply px-2.5 py-1 text-xs; }
-                .btn-primary { @apply bg-blue-600 text-white border-blue-600 hover:bg-blue-700 dark:hover:bg-blue-500; }
-            `}</style>
         </div>
     );
 };
