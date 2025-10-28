@@ -66,6 +66,64 @@ const NEXT_STEP_META: Record<string, { icon: React.ComponentType<any>; label: st
 // Define a clear type for sort order to improve readability.
 type SortOrder = 'NEWEST' | 'OLDEST';
 
+type CategoryFilter =
+  | 'ALL'
+  | 'touroperador'
+  | 'hoteles'
+  | 'transportistas'
+  | 'parques'
+  | 'guias'
+  | 'souvenirs_restaurantes';
+
+// Normaliza string para comparar
+function norm(s: any): string {
+  return (s ?? '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+}
+
+// Mapea valores libres a nuestras categorías canon
+function mapToCategory(lead: any): CategoryFilter | 'UNSET' {
+  const raw = norm(lead?.category || lead?.role || '');
+  if (!raw) return 'UNSET';
+  
+  const categoryMap: Record<string, CategoryFilter> = {
+      'touroperador': 'touroperador',
+      'tour.?oper': 'touroperador',
+      'operador': 'touroperador',
+      'agency': 'touroperador',
+      'agencia': 'touroperador',
+      'hoteles': 'hoteles',
+      'hotel': 'hoteles',
+      'transportistas': 'transportistas',
+      'transport': 'transportistas',
+      'shuttle': 'transportistas',
+      'parques': 'parques',
+      'parque': 'parques',
+      'park': 'parques',
+      'attraction': 'parques',
+      'atraccion': 'parques',
+      'guias': 'guias',
+      'guia': 'guias',
+      'guide': 'guias',
+      'souvenirs_restaurantes': 'souvenirs_restaurantes',
+      'souvenir': 'souvenirs_restaurantes',
+      'restaurant': 'souvenirs_restaurantes',
+  };
+
+  for (const key in categoryMap) {
+      if (new RegExp(key).test(raw)) {
+          return categoryMap[key];
+      }
+  }
+
+  return 'UNSET';
+}
+
+
 const LeadList: React.FC = () => {
   const { status: authStatus } = useAuth();
   const [allLeads, setAllLeads] = useState<AnyLead[]>([]);
@@ -79,7 +137,7 @@ const LeadList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>(() => localStorage.getItem('lead_filter_status') || 'ALL');
   const [nextStepFilter, setNextStepFilter] = useState<string>(() => localStorage.getItem('lead_filter_step') || 'ALL');
   const [channelFilter, setChannelFilter] = useState<string>(() => localStorage.getItem('lead_filter_channel') || 'ALL');
-  // FIX: Renamed 'orderBy' to 'sortOrder' to avoid conflict with the 'orderBy' function imported from Firestore.
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>(() => (localStorage.getItem('lead_filter_category') as CategoryFilter) || 'ALL');
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => (localStorage.getItem('lead_order_by') as SortOrder) || 'NEWEST');
 
   // Menú de siguiente paso
@@ -92,7 +150,7 @@ const LeadList: React.FC = () => {
   useEffect(() => { localStorage.setItem('lead_filter_status', statusFilter); }, [statusFilter]);
   useEffect(() => { localStorage.setItem('lead_filter_step', nextStepFilter); }, [nextStepFilter]);
   useEffect(() => { localStorage.setItem('lead_filter_channel', channelFilter); }, [channelFilter]);
-  // FIX: Updated the dependency and key for persisting the sort order.
+  useEffect(() => { localStorage.setItem('lead_filter_category', categoryFilter); }, [categoryFilter]);
   useEffect(() => { localStorage.setItem('lead_order_by', sortOrder); }, [sortOrder]);
 
   const fetchAllLeads = useCallback(async () => {
@@ -138,11 +196,14 @@ const LeadList: React.FC = () => {
       const passNextStep = nextStepFilter === 'ALL' ? true : (l.next_step || '') === nextStepFilter;
 
       const passChannel = channelFilter === 'ALL' ? true : (l.source || '').toUpperCase() === channelFilter.toUpperCase();
+      
+      const mappedCategory = mapToCategory(l);
+      const passCategory = categoryFilter === 'ALL' ? true : mappedCategory === categoryFilter;
 
       const haystack = [l.name, l.company, l.email, l.phone_e164, l.phone_raw].filter(Boolean).join(' ').toLowerCase();
       const passText = needle === '' ? true : haystack.includes(needle);
 
-      return passStatus && passNextStep && passChannel && passText;
+      return passStatus && passNextStep && passChannel && passText && passCategory;
     });
 
     const withDate = filtered.map(l => ({
@@ -150,14 +211,12 @@ const LeadList: React.FC = () => {
       d: asDate(l.created_at) || new Date(0)
     }));
     
-    // FIX: Use the 'sortOrder' state variable in an explicit comparator to sort the leads correctly. This resolves the TypeScript error where the state variable was being treated as a function due to a name collision.
     withDate.sort((a, b) => sortOrder === 'NEWEST'
       ? b.d.getTime() - a.d.getTime()
       : a.d.getTime() - b.d.getTime());
 
     return withDate.map(x => x.l);
-    // FIX: Updated the dependency array to use the renamed 'sortOrder' state.
-  }, [allLeads, q, statusFilter, nextStepFilter, channelFilter, sortOrder]);
+  }, [allLeads, q, statusFilter, nextStepFilter, channelFilter, sortOrder, categoryFilter]);
 
   const handleUpdateLeadState = (id: string, patch: Partial<Lead>) => {
     setAllLeads(ls => ls.map(l => l.id === id ? { ...l, ...patch } : l));
@@ -413,8 +472,8 @@ const LeadList: React.FC = () => {
         </div>
       </div>
       <Card>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 mb-4 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-          <div className="relative sm:col-span-2 md:col-span-3 lg:col-span-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-4 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+          <div className="relative sm:col-span-2 md:col-span-3 lg:col-span-6">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400"/>
             <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search name, company, email..."
               className="w-full pl-10 input" />
@@ -432,8 +491,13 @@ const LeadList: React.FC = () => {
             <option value="QR">QR</option>
             <option value="MANUAL">MANUAL</option>
           </select>
-          {/* FIX: The value and onChange handler now correctly reference 'sortOrder' and 'setSortOrder'. */}
-          <select value={sortOrder} onChange={e => setSortOrder(e.target.value as SortOrder)} className="input col-span-2 lg:col-span-1">
+          <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value as CategoryFilter)} className="input">
+              <option value="ALL">All categories</option>
+              {LEAD_CATEGORY_ORDER.map(key => (
+                  <option key={key} value={key}>{LEAD_CATEGORY_LABELS[key]}</option>
+              ))}
+          </select>
+          <select value={sortOrder} onChange={e => setSortOrder(e.target.value as SortOrder)} className="input col-span-2 lg:col-span-2">
             <option value="NEWEST">Newest first</option>
             <option value="OLDEST">Oldest first</option>
           </select>
