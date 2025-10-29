@@ -22,6 +22,7 @@ const LeadList: React.FC = () => {
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [categoryFilter, setCategoryFilter] = useState<LeadCategory | ''>('');
+    const [nextStepFilter, setNextStepFilter] = useState('');
 
     // Pagination
     const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
@@ -58,6 +59,9 @@ const LeadList: React.FC = () => {
             }
             if (categoryFilter) {
                 baseConstraints.push(where('role', '==', categoryFilter));
+            }
+            if (nextStepFilter) {
+                baseConstraints.push(where('next_step', '==', nextStepFilter));
             }
             
             const countQuery = query(leadsRef, ...baseConstraints);
@@ -100,12 +104,12 @@ const LeadList: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [statusFilter, categoryFilter, debouncedSearchTerm, lastVisible, firstVisible]);
+    }, [statusFilter, categoryFilter, nextStepFilter, debouncedSearchTerm, lastVisible, firstVisible]);
     
     useEffect(() => {
         fetchLeads('first');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, categoryFilter, debouncedSearchTerm]);
+    }, [statusFilter, categoryFilter, nextStepFilter, debouncedSearchTerm]);
 
     const handleNextPage = () => {
         if (lastVisible) {
@@ -163,6 +167,7 @@ const LeadList: React.FC = () => {
         ];
         if (statusFilter) constraints.push(where('status', '==', statusFilter));
         if (categoryFilter) constraints.push(where('role', '==', categoryFilter));
+        if (nextStepFilter) constraints.push(where('next_step', '==', nextStepFilter));
 
         const q = query(leadsRef, ...constraints);
         const snapshot = await getDocs(q);
@@ -186,6 +191,8 @@ const LeadList: React.FC = () => {
 
     const leadStatuses: (Lead['status'])[] = ['NEW', 'CONTACTED', 'PROPOSED', 'WON', 'LOST'];
     const leadCategories = Object.keys(LEAD_CATEGORY_LABELS) as LeadCategory[];
+    const leadNextSteps: Exclude<Lead['next_step'], undefined>[] = ['Reunion', 'Llamada15', 'Condiciones', 'FamTrip', 'WhatsApp'];
+
 
     return (
         <div className="mx-auto max-w-7xl">
@@ -214,7 +221,7 @@ const LeadList: React.FC = () => {
                             className="input pl-10 w-full"
                         />
                     </div>
-                    <div className="flex gap-4">
+                    <div className="flex flex-col sm:flex-row gap-4">
                         <select
                             value={statusFilter}
                             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); setLastVisible(null); }}
@@ -233,6 +240,16 @@ const LeadList: React.FC = () => {
                             <option value="">All Categories</option>
                             {leadCategories.map(cat => (
                                 <option key={cat} value={cat}>{LEAD_CATEGORY_LABELS[cat]}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={nextStepFilter}
+                            onChange={(e) => { setNextStepFilter(e.target.value); setPage(1); setLastVisible(null); }}
+                            className="input"
+                        >
+                            <option value="">All Next Steps</option>
+                            {leadNextSteps.map(step => (
+                                <option key={step} value={step}>{step}</option>
                             ))}
                         </select>
                     </div>
