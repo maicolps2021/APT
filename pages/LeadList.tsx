@@ -8,8 +8,10 @@ import Card from '../components/Card';
 import LeadDetailModal from '../components/LeadDetailModal';
 import { LoaderCircle, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { exportLeadsCsv } from '../lib/export';
+import { includesNorm } from '../lib/search';
 
 const PAGE_SIZE = 25;
+const SEARCH_PAGE_SIZE = 2000;
 
 const LeadList: React.FC = () => {
     const [leads, setLeads] = useState<Lead[]>([]);
@@ -26,93 +28,118 @@ const LeadList: React.FC = () => {
 
     // Pagination
     const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-    const [firstVisible, setFirstVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
     const [page, setPage] = useState(1);
     const [totalLeads, setTotalLeads] = useState(0);
+    const [allSearchedLeads, setAllSearchedLeads] = useState<Lead[]>([]);
+
 
     // Debounce search input
     useEffect(() => {
         const handler = setTimeout(() => {
             setDebouncedSearchTerm(searchTerm);
-            setPage(1);
+            setPage(1); // Reset page on new search
             setLastVisible(null);
-            setFirstVisible(null);
         }, 500);
         return () => clearTimeout(handler);
     }, [searchTerm]);
+    
+    // Reset page when filters change
+    useEffect(() => {
+        setPage(1);
+        setLastVisible(null);
+    }, [statusFilter, categoryFilter, nextStepFilter]);
 
-    const fetchLeads = useCallback(async (direction: 'next' | 'prev' | 'first' = 'first') => {
+
+    const fetchLeads = useCallback(async (direction: 'next' | 'first' = 'first') => {
         setLoading(true);
         setError(null);
 
         try {
             const leadsRef = collection(db, 'leads');
             
-            // Base constraints
             let baseConstraints = [
                 where('org_id', '==', ORG_UUID),
                 where('event_code', '==', EVENT_CODE),
             ];
             
-            if (statusFilter) {
-                baseConstraints.push(where('status', '==', statusFilter));
-            }
-            if (categoryFilter) {
-                baseConstraints.push(where('role', '==', categoryFilter));
-            }
-            if (nextStepFilter) {
-                baseConstraints.push(where('next_step', '==', nextStepFilter));
-            }
+            if (statusFilter) baseConstraints.push(where('status', '==', statusFilter));
+            if (categoryFilter) baseConstraints.push(where('role', '==', categoryFilter));
+            if (nextStepFilter) baseConstraints.push(where('next_step', '==', nextStepFilter));
             
-            const countQuery = query(leadsRef, ...baseConstraints);
-            const countSnapshot = await getCountFromServer(countQuery);
-            setTotalLeads(countSnapshot.data().count);
-            
-            let dataQuery = query(leadsRef, ...baseConstraints, orderBy('created_at', 'desc'), limit(PAGE_SIZE));
-
-            if (direction === 'next' && lastVisible) {
-                dataQuery = query(leadsRef, ...baseConstraints, orderBy('created_at', 'desc'), startAfter(lastVisible), limit(PAGE_SIZE));
-            } else if (direction === 'prev' && firstVisible) {
-                // Simplified "previous" logic by resetting to page 1
-                setPage(1);
-            }
-            
-            const documentSnapshots = await getDocs(dataQuery);
-
-            let fetchedLeads = documentSnapshots.docs.map(doc => {
-                 const data = doc.data();
-                 const createdAt = data.created_at?.toDate ? data.created_at.toDate().toISOString() : data.created_at;
-                 return { id: doc.id, ...data, created_at: createdAt } as Lead;
-            });
-
             if (debouncedSearchTerm) {
-                const lowercasedFilter = debouncedSearchTerm.toLowerCase();
-                fetchedLeads = fetchedLeads.filter(
-                    lead =>
-                        lead.name.toLowerCase().includes(lowercasedFilter) ||
-                        lead.company?.toLowerCase().includes(lowercasedFilter) ||
-                        lead.email?.toLowerCase().includes(lowercasedFilter)
-                );
-            }
+                // SEARCH MODE: Fetch a large batch and filter on the client.
+                const searchQ = query(leadsRef, ...baseConstraints, orderBy('created_at', 'desc'), limit(SEARCH_PAGE_SIZE));
+                const snapshot = await getDocs(searchQ);
+                const allFetchedLeads = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    const createdAt = data.created_at?.toDate ? data.created_at.toDate().toISOString() : data.created_at;
+                    return { id: doc.id, ...data, created_at: createdAt } as Lead;
+                });
 
-            setLeads(fetchedLeads);
-            setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1] || null);
-            setFirstVisible(documentSnapshots.docs[0] || null);
+                const filteredLeads = allFetchedLeads.filter(lead => {
+                    const haystack = [
+                        lead.name,
+                        lead.company,
+                        lead.email,
+                        lead.phone_e164,
+                        lead.phone_local,
+                        lead.whatsapp,
+                        lead.role,
+                        lead.notes,
+                    ].filter(Boolean).join(' ');
+                    return includesNorm(haystack, debouncedSearchTerm);
+                });
+
+                setAllSearchedLeads(filteredLeads);
+                setTotalLeads(filteredLeads.length);
+                setLeads(filteredLeads.slice(0, PAGE_SIZE));
+                setLastVisible(null); // Disable server pagination
+            } else {
+                // NORMAL PAGINATION MODE
+                setAllSearchedLeads([]); // Clear search results
+
+                const countQuery = query(leadsRef, ...baseConstraints);
+                const countSnapshot = await getCountFromServer(countQuery);
+                setTotalLeads(countSnapshot.data().count);
+                
+                let dataQuery = query(leadsRef, ...baseConstraints, orderBy('created_at', 'desc'), limit(PAGE_SIZE));
+
+                if (direction === 'next' && lastVisible) {
+                    dataQuery = query(leadsRef, ...baseConstraints, orderBy('created_at', 'desc'), startAfter(lastVisible), limit(PAGE_SIZE));
+                }
+                
+                const documentSnapshots = await getDocs(dataQuery);
+                const fetchedLeads = documentSnapshots.docs.map(doc => {
+                     const data = doc.data();
+                     const createdAt = data.created_at?.toDate ? data.created_at.toDate().toISOString() : data.created_at;
+                     return { id: doc.id, ...data, created_at: createdAt } as Lead;
+                });
+                
+                setLeads(fetchedLeads);
+                setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1] || null);
+            }
         } catch (err: any) {
             console.error("Error fetching leads:", err);
             setError("Could not load leads. Please check permissions and database configuration.");
         } finally {
             setLoading(false);
         }
-    }, [statusFilter, categoryFilter, nextStepFilter, debouncedSearchTerm, lastVisible, firstVisible]);
+    }, [statusFilter, categoryFilter, nextStepFilter, debouncedSearchTerm, lastVisible]);
     
     useEffect(() => {
         fetchLeads('first');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, categoryFilter, nextStepFilter, debouncedSearchTerm]);
+    }, [debouncedSearchTerm, statusFilter, categoryFilter, nextStepFilter]);
 
     const handleNextPage = () => {
-        if (lastVisible) {
+        if (debouncedSearchTerm) {
+            const nextPage = page + 1;
+            const offset = (nextPage - 1) * PAGE_SIZE;
+            if (offset < totalLeads) {
+                setPage(nextPage);
+                setLeads(allSearchedLeads.slice(offset, offset + PAGE_SIZE));
+            }
+        } else if (lastVisible) {
             setPage(p => p + 1);
             fetchLeads('next');
         }
@@ -120,12 +147,17 @@ const LeadList: React.FC = () => {
     
     const handlePrevPage = () => {
         if (page > 1) {
-            // This is a simplified implementation for previous page.
-            // A full implementation would require reversing the query order and using endBefore.
-            setPage(1);
-            setLastVisible(null);
-            setFirstVisible(null);
-            fetchLeads('first');
+            if (debouncedSearchTerm) {
+                const prevPage = page - 1;
+                const offset = (prevPage - 1) * PAGE_SIZE;
+                setPage(prevPage);
+                setLeads(allSearchedLeads.slice(offset, offset + PAGE_SIZE));
+            } else {
+                // Simplified server-side prev: just go back to the first page.
+                setPage(1);
+                setLastVisible(null);
+                fetchLeads('first');
+            }
         }
     };
 
@@ -142,7 +174,6 @@ const LeadList: React.FC = () => {
             return;
         }
         
-        // Optimistically update just the one row if we can find it
         const leadRef = doc(db, 'leads', currentLeadId);
         getDoc(leadRef).then(docSnap => {
             if (docSnap.exists()) {
@@ -150,8 +181,11 @@ const LeadList: React.FC = () => {
                 const createdAt = updatedData.created_at?.toDate ? updatedData.created_at.toDate().toISOString() : updatedData.created_at;
                 const updatedLead = { id: docSnap.id, ...updatedData, created_at: createdAt } as Lead;
                 setLeads(currentLeads => currentLeads.map(l => l.id === updatedLead.id ? updatedLead : l));
+                 if (debouncedSearchTerm) {
+                    setAllSearchedLeads(currentLeads => currentLeads.map(l => l.id === updatedLead.id ? updatedLead : l));
+                }
             } else {
-                fetchLeads('first'); // Fallback to full refresh
+                fetchLeads('first');
             }
         }).catch(() => fetchLeads('first'));
     };
@@ -160,7 +194,7 @@ const LeadList: React.FC = () => {
       setLoading(true);
       try {
         const leadsRef = collection(db, 'leads');
-        let constraints: any[] = [ // Use any[] to allow conditional pushes
+        let constraints: any[] = [
           where('org_id', '==', ORG_UUID),
           where('event_code', '==', EVENT_CODE),
           orderBy('created_at', 'desc'),
@@ -169,18 +203,34 @@ const LeadList: React.FC = () => {
         if (categoryFilter) constraints.push(where('role', '==', categoryFilter));
         if (nextStepFilter) constraints.push(where('next_step', '==', nextStepFilter));
 
-        const q = query(leadsRef, ...constraints);
+        const q = query(leadsRef, ...constraints, limit(SEARCH_PAGE_SIZE));
         const snapshot = await getDocs(q);
         const allLeads = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lead));
         
-        const leadsToExport = debouncedSearchTerm
-            ? allLeads.filter(lead =>
-                lead.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-                lead.company?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
-            )
-            : allLeads;
+        const leadsToFilter = debouncedSearchTerm ? allLeads : allLeads;
         
-        exportLeadsCsv(leadsToExport);
+        const filteredLeads = debouncedSearchTerm
+            ? leadsToFilter.filter(lead => {
+                const haystack = [lead.name, lead.company, lead.email, lead.phone_e164, lead.phone_local, lead.whatsapp, lead.role, lead.notes].filter(Boolean).join(' ');
+                return includesNorm(haystack, debouncedSearchTerm);
+            })
+            : leadsToFilter;
+        
+        const exportData = filteredLeads.map(lead => ({
+          name: lead.name,
+          company: lead.company ?? '',
+          email: lead.email ?? '',
+          phone_e164: lead.phone_e164 ?? '',
+          phone_local: lead.phone_local ?? '',
+          role: lead.role ?? '',
+          status: lead.status ?? 'NEW',
+          next_step: lead.next_step ?? '',
+          day: lead.day ?? '',
+          slot: lead.slot ?? '',
+          created_at: lead.created_at ? new Date(lead.created_at).toISOString() : '',
+        }));
+
+        exportLeadsCsv(exportData);
       } catch (err) {
         console.error("Export failed:", err);
         setError("Could not export leads.");
@@ -193,6 +243,7 @@ const LeadList: React.FC = () => {
     const leadCategories = Object.keys(LEAD_CATEGORY_LABELS) as LeadCategory[];
     const leadNextSteps: Exclude<Lead['next_step'], undefined>[] = ['Reunion', 'Llamada15', 'Condiciones', 'FamTrip', 'WhatsApp'];
 
+    const isLastPage = debouncedSearchTerm ? (page * PAGE_SIZE >= totalLeads) : (!lastVisible || leads.length < PAGE_SIZE);
 
     return (
         <div className="mx-auto max-w-7xl">
@@ -215,7 +266,7 @@ const LeadList: React.FC = () => {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Search by name, company, or email..."
+                            placeholder="Search name, company, email, phone, role..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="input pl-10 w-full"
@@ -224,7 +275,7 @@ const LeadList: React.FC = () => {
                     <div className="flex flex-col sm:flex-row gap-4">
                         <select
                             value={statusFilter}
-                            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); setLastVisible(null); }}
+                            onChange={(e) => setStatusFilter(e.target.value)}
                             className="input"
                         >
                             <option value="">All Statuses</option>
@@ -234,7 +285,7 @@ const LeadList: React.FC = () => {
                         </select>
                          <select
                             value={categoryFilter}
-                            onChange={(e) => { setCategoryFilter(e.target.value as LeadCategory | ''); setPage(1); setLastVisible(null); }}
+                            onChange={(e) => setCategoryFilter(e.target.value as LeadCategory | '')}
                             className="input"
                         >
                             <option value="">All Categories</option>
@@ -244,7 +295,7 @@ const LeadList: React.FC = () => {
                         </select>
                         <select
                             value={nextStepFilter}
-                            onChange={(e) => { setNextStepFilter(e.target.value); setPage(1); setLastVisible(null); }}
+                            onChange={(e) => setNextStepFilter(e.target.value)}
                             className="input"
                         >
                             <option value="">All Next Steps</option>
@@ -311,7 +362,7 @@ const LeadList: React.FC = () => {
                         <button onClick={handlePrevPage} disabled={page === 1} className="flex items-center justify-center px-4 h-10 text-base font-medium text-white bg-gray-800 rounded-l hover:bg-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white disabled:opacity-50">
                             <ChevronLeft className="w-5 h-5 mr-2" /> Prev
                         </button>
-                        <button onClick={handleNextPage} disabled={!lastVisible || leads.length < PAGE_SIZE} className="flex items-center justify-center px-4 h-10 text-base font-medium text-white bg-gray-800 border-0 border-l border-gray-700 rounded-r hover:bg-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white disabled:opacity-50">
+                        <button onClick={handleNextPage} disabled={isLastPage} className="flex items-center justify-center px-4 h-10 text-base font-medium text-white bg-gray-800 border-0 border-l border-gray-700 rounded-r hover:bg-gray-900 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white disabled:opacity-50">
                             Next <ChevronRight className="w-5 h-5 ml-2" />
                         </button>
                     </div>

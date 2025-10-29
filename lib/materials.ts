@@ -1,5 +1,5 @@
 import { collection, doc, getDocs, addDoc, deleteDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db } from './supabaseClient';
 
 
@@ -20,8 +20,42 @@ export async function loadMaterials(orgId: string): Promise<Material[]> {
   return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })) as Material[];
 }
 
-export async function deleteMaterial(orgId: string, materialId: string) {
-  await deleteDoc(doc(db, 'orgs', orgId, 'materials', materialId));
+// Helper: si ya guardas storagePath, úsalo. Si NO, deriva la ruta desde la URL segura de Firebase.
+function resolveStorageRefFromUrl(url: string) {
+  try {
+    // If you have material.storagePath, prefer it.
+    // Otherwise, use ref(storage, decodeURIComponent(new URL(url).pathname.replace(/^\/v0\/b\/[^/]+\/o\//,'')))
+    const path = decodeURIComponent(new URL(url).pathname.replace(/^\/v0\/b\/[^/]+\/o\//,'')).replace(/(\?.*)$/,'');
+    const storage = getStorage();
+    return ref(storage, path);
+  } catch (e) {
+      console.error("Could not resolve storage ref from URL", url, e);
+      throw new Error("Invalid storage URL format.");
+  }
+}
+
+// Borra archivo en Storage y doc en Firestore.
+export async function deleteMaterial(orgId: string, materialId: string, fileUrlOrPath: string) {
+  try {
+    const storage = getStorage();
+    const storageRef = fileUrlOrPath.startsWith('http')
+      ? resolveStorageRefFromUrl(fileUrlOrPath)
+      : ref(storage, fileUrlOrPath);
+
+    await deleteObject(storageRef);
+  } catch (e: any) {
+    // If the file is not found (code 'storage/object-not-found'), it's not a critical error.
+    // We can still proceed to delete the Firestore document.
+    if (e.code === 'storage/object-not-found') {
+        console.warn(`Storage object not found for material ${materialId}. Proceeding to delete Firestore doc.`, e);
+    } else {
+        // For other errors, we might want to be more cautious, but for now, we'll just warn.
+        console.warn('Storage delete warning:', e);
+    }
+  }
+
+  const dref = doc(db, `orgs/${orgId}/materials/${materialId}`);
+  await deleteDoc(dref);
 }
 
 /** Sube a Storage y crea doc en Firestore. */

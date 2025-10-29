@@ -9,6 +9,7 @@ const Materials: React.FC = () => {
   const [items, setItems] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchMaterials = useCallback(async () => {
       setLoading(true);
@@ -40,14 +41,17 @@ const Materials: React.FC = () => {
     return <LinkIcon className="w-5 h-5 text-gray-500" />;
   }
 
-  async function handleDelete(id: string) {
-    if (!window.confirm('¿Eliminar este material permanentemente?')) return;
+  async function handleDelete(material: Material) {
+    if (!window.confirm('¿Eliminar material? Esto borrará el archivo del Storage y el registro interno.')) return;
+    setDeletingId(material.id);
     try {
-        await deleteMaterial(ORG_UUID, id);
-        setItems((s)=>s.filter(i=>i.id!==id));
+        await deleteMaterial(ORG_UUID, material.id, material.url);
+        setItems((s)=>s.filter(i=>i.id!==material.id));
     } catch(err) {
         console.error(err);
         alert("Failed to delete material.");
+    } finally {
+      setDeletingId(null);
     }
   }
   
@@ -89,8 +93,13 @@ const Materials: React.FC = () => {
                                     <div className="text-xs text-gray-400 mt-1">{renderSize(m.size)}</div>
                                 </div>
                             </div>
-                            <button onClick={()=>handleDelete(m.id)} className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 flex-shrink-0" title="Delete Material">
-                                <Trash2 className="w-4 h-4" />
+                            <button 
+                                onClick={() => handleDelete(m)} 
+                                disabled={deletingId === m.id}
+                                className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 focus:outline-none focus:ring-2 focus:ring-red-400 flex-shrink-0 disabled:opacity-50 disabled:cursor-wait" 
+                                title="Delete Material"
+                            >
+                                {deletingId === m.id ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                             </button>
                         </div>
                         ))}
