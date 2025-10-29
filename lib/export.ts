@@ -1,51 +1,95 @@
 import type { Lead } from '../types';
 
-/**
- * Converts an array of Lead objects to a CSV string and triggers a download.
- * @param data The array of Lead objects to export.
- */
-export function exportLeadsCsv(data: Lead[]): void {
-  if (!data || data.length === 0) {
-    alert("No data to export.");
-    return;
+export type FirestoreTimestamp = { toDate?: () => Date } | any;
+
+function toISO(v: any): string {
+  if (!v) return '';
+  // Firestore Timestamps are often represented as strings in JSON contexts or after certain transformations.
+  // We prioritize the toDate method if it exists, which is the most reliable way.
+  if (v && typeof v.toDate === 'function') {
+    try {
+      return v.toDate().toISOString();
+    } catch {
+      // Fallback if toDate fails
+    }
   }
+  // Handle if it's already an ISO string
+  if (typeof v === 'string') {
+    // Basic check to see if it resembles an ISO string
+    if (!isNaN(Date.parse(v))) {
+        return new Date(v).toISOString();
+    }
+    return v;
+  }
+  // Handle if it's a Date object
+  if (v instanceof Date) {
+      return v.toISOString();
+  }
+  // Handle numeric timestamps (milliseconds)
+  if (typeof v === 'number') {
+      return new Date(v).toISOString();
+  }
+  return '';
+}
 
-  // Define headers from the Lead type keys, providing a fallback for an empty array
-  const headers = Object.keys(data[0] || {}) as (keyof Lead)[];
+
+export interface LeadCsvRow {
+  name?: string;
+  company?: string;
+  email?: string;
+  phone_e164?: string;
+  phone_local?: string;
+  role?: string;
+  status?: string;
+  next_step?: string;
+  day?: string | number;
+  slot?: string;
+  created_at?: string;
+}
+
+export function exportLeadsCsv(leads: Lead[]) {
+  // Map full Lead objects to flat CSV rows
+  const rows: LeadCsvRow[] = (leads || []).map((l) => ({
+    name: l?.name ?? '',
+    company: l?.company ?? '',
+    email: l?.email ?? '',
+    phone_e164: l?.phone_e164 ?? '',
+    phone_local: l?.phone_local ?? '',
+    role: l?.role ?? '',
+    status: l?.status ?? '',
+    next_step: l?.next_step ?? '',
+    day: l?.day ?? '',
+    slot: l?.slot ?? '',
+    created_at: toISO(l?.created_at),
+  }));
+
+  // Build a simple CSV
+  const headers = [
+    'name', 'company', 'email', 'phone_e164', 'phone_local',
+    'role', 'status', 'next_step', 'day', 'slot', 'created_at'
+  ];
   
-  // Function to safely handle values that might contain commas or quotes
-  const escapeCsvValue = (value: any): string => {
-    if (value === null || value === undefined) {
-      return '';
-    }
-    const stringValue = String(value);
-    // If the value contains a comma, a quote, or a newline, wrap it in double quotes
-    // and escape any existing double quotes by doubling them.
-    if (/[",\n\r]/.test(stringValue)) {
-      return `"${stringValue.replace(/"/g, '""')}"`;
-    }
-    return stringValue;
+  const escape = (s: any) => {
+    const str = (s ?? '').toString();
+    if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+    return str;
   };
-
-  // Convert data array to CSV string
-  const csvContent = [
+  
+  const lines = [
     headers.join(','),
-    ...data.map(row => 
-      headers.map(header => escapeCsvValue(row[header])).join(',')
-    )
-  ].join('\n');
+    ...rows.map(r => headers.map(h => escape((r as any)[h])).join(',')),
+  ];
+  
+  const csv = lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
 
-  // Create a Blob and trigger the download
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  // Download without extra dependencies
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  
-  const today = new Date().toISOString().slice(0, 10);
-  link.setAttribute("download", `leads_arenal_private_tours_${today}.csv`);
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `leads_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   URL.revokeObjectURL(url);
 }

@@ -193,6 +193,13 @@ const LeadList: React.FC = () => {
     const handleExport = async () => {
       setLoading(true);
       try {
+        // If a search term is active, we already have all the filtered leads in memory.
+        if (debouncedSearchTerm) {
+            exportLeadsCsv(allSearchedLeads);
+            return;
+        }
+
+        // Otherwise, fetch all leads matching the current filters.
         const leadsRef = collection(db, 'leads');
         let constraints: any[] = [
           where('org_id', '==', ORG_UUID),
@@ -205,32 +212,14 @@ const LeadList: React.FC = () => {
 
         const q = query(leadsRef, ...constraints, limit(SEARCH_PAGE_SIZE));
         const snapshot = await getDocs(q);
-        const allLeads = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lead));
-        
-        const leadsToFilter = debouncedSearchTerm ? allLeads : allLeads;
-        
-        const filteredLeads = debouncedSearchTerm
-            ? leadsToFilter.filter(lead => {
-                const haystack = [lead.name, lead.company, lead.email, lead.phone_e164, lead.phone_local, lead.whatsapp, lead.role, lead.notes].filter(Boolean).join(' ');
-                return includesNorm(haystack, debouncedSearchTerm);
-            })
-            : leadsToFilter;
-        
-        const exportData = filteredLeads.map(lead => ({
-          name: lead.name,
-          company: lead.company ?? '',
-          email: lead.email ?? '',
-          phone_e164: lead.phone_e164 ?? '',
-          phone_local: lead.phone_local ?? '',
-          role: lead.role ?? '',
-          status: lead.status ?? 'NEW',
-          next_step: lead.next_step ?? '',
-          day: lead.day ?? '',
-          slot: lead.slot ?? '',
-          created_at: lead.created_at ? new Date(lead.created_at).toISOString() : '',
-        }));
+        const allFilteredLeads = snapshot.docs.map(doc => {
+            const data = doc.data();
+            const createdAt = data.created_at?.toDate ? data.created_at.toDate().toISOString() : data.created_at;
+            return { id: doc.id, ...data, created_at: createdAt } as Lead;
+        });
 
-        exportLeadsCsv(exportData);
+        exportLeadsCsv(allFilteredLeads);
+
       } catch (err) {
         console.error("Export failed:", err);
         setError("Could not export leads.");
